@@ -465,10 +465,18 @@ Lo que sigue sin cubrir, para que no haya que adivinarlo: `tools_control.py`
 (pantalla y SSH) y `mcp.py` al 29%, `surfaces/base.py` en cero y
 `surfaces/live.py` al 49%. Está marcado en `CODEX.md`.
 
-Y una advertencia que la cobertura no da: **nada se ha probado contra un
-modelo vivo, un bot de Telegram real, una pantalla real ni un servidor por
-SSH real.** La cobertura mide qué código se ejecutó, no si el producto
-funciona en el mundo.
+Y lo que la cobertura no dice — qué se ha ejercitado de verdad y qué no:
+
+| | |
+|---|---|
+| **SSH** | Verificado contra un OpenSSH real: comandos, lectura, escritura, copia previa, undo remoto y los tres ámbitos. Destapó dos fallos, uno de ellos grave. |
+| **Telegram** | Verificado contra una imitación fiel de su Bot API —`offset`, tope de 4096, forma de los updates—, **no contra los servidores de Telegram**. |
+| **CLI, MCP, bóveda, sync, programador** | Ejercitados sobre el paquete instalado, con el binario `fib`. |
+| **Modelo vivo** | **Sin verificar.** Todo se ha probado contra endpoints que hablan el protocolo OpenAI, nunca contra un LLM real. |
+| **Pantalla, Discord** | **Sin verificar.** |
+
+Esa penúltima fila es la importante: el protocolo está probado, el
+comportamiento de un modelo real no.
 
 Cada versión de este proyecto salió de auditar la anterior, y en cada auditoría
 aparecieron bugs reales en código que se veía bien. Están en el `CHANGELOG.md`

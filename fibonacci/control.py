@@ -341,12 +341,28 @@ class RemoteHost:
     def target(self) -> str:
         return f"{self.user}@{self.host}" if self.user else self.host
 
-    def ssh_args(self) -> list[str]:
+    def _args_comunes(self) -> list[str]:
         args = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new",
-                "-o", "ConnectTimeout=10", "-p", str(self.port)]
+                "-o", "ConnectTimeout=10"]
         if self.key_file:
             args += ["-i", str(Path(self.key_file).expanduser())]
         return args
+
+    def ssh_args(self) -> list[str]:
+        return [*self._args_comunes(), "-p", str(self.port)]
+
+    def scp_args(self) -> list[str]:
+        """
+        `scp` quiere el puerto en `-P` mayúscula; `ssh` en `-p` minúscula.
+
+        Antes esto se resolvía filtrando `"-p"` de `ssh_args()`, que quitaba el
+        flag **pero dejaba el número suelto**: scp lo interpretaba como un
+        archivo de origen y abortaba con `stat local "22"`. Como `ssh_args()`
+        siempre incluye el puerto, `write()` y `fetch()` fallaban en TODOS los
+        hosts, no solo en los de puerto no estándar — y `fetch()` es la copia
+        previa de la que depende el undo remoto.
+        """
+        return [*self._args_comunes(), "-P", str(self.port)]
 
 
 class RemoteError(RuntimeError):
@@ -409,14 +425,31 @@ class Remote:
             raise RemoteError(f"no se pudo leer {path}: {out[:200]}")
         return out
 
+    def _scp(self, h: RemoteHost, origen: str, destino: str):
+        """
+        `scp` con respaldo al protocolo antiguo.
+
+        OpenSSH 9 copia por el subsistema SFTP, que no todos los servidores
+        exponen: dropbear, busybox y cualquier host endurecido que lo haya
+        quitado del `sshd_config` fallan con "subsystem request failed". En
+        esos casos `-O` usa el protocolo SCP clásico, que sí funciona. Sin el
+        respaldo, la copia remota no falla a medias: falla del todo.
+        """
+        cmd = ["scp", *h.scp_args(), origen, destino]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=180,
+                           encoding="utf-8", errors="replace")
+        if r.returncode != 0 and "subsystem" in (r.stderr or "").lower():
+            log.info("El servidor no expone SFTP; reintentando con -O")
+            cmd = ["scp", "-O", *h.scp_args(), origen, destino]
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=180,
+                               encoding="utf-8", errors="replace")
+        return r
+
     def fetch(self, alias: str, remote_path: str, local_path: Path) -> bool:
         """Copia previa: la base del undo remoto."""
         h = self.get(alias)
         local_path.parent.mkdir(parents=True, exist_ok=True)
-        r = subprocess.run(
-            ["scp", *[a for a in h.ssh_args() if a != "-p"],
-             "-P", str(h.port), f"{h.target}:{remote_path}", str(local_path)],
-            capture_output=True, timeout=180)
+        r = self._scp(h, f"{h.target}:{remote_path}", str(local_path))
         return r.returncode == 0 and local_path.exists()
 
     def write(self, alias: str, path: str, content: str) -> str:
@@ -428,15 +461,26 @@ class Remote:
             tmp.write(content)
             tmp_path = tmp.name
         try:
-            r = subprocess.run(
-                ["scp", *[a for a in h.ssh_args() if a != "-p"],
-                 "-P", str(h.port), tmp_path, f"{h.target}:{path}"],
-                capture_output=True, text=True, timeout=180)
+            r = self._scp(h, tmp_path, f"{h.target}:{path}")
             if r.returncode != 0:
                 raise RemoteError(f"escritura falló: {r.stderr[:200]}")
             return f"escrito {alias}:{path} ({len(content)} bytes)"
         finally:
             os.unlink(tmp_path)
+
+    def push(self, alias: str, local_path: Path | str, remote_path: str) -> str:
+        """
+        Sube un archivo local que ya existe. **Lanza si falla.**
+
+        Es lo que necesita el undo remoto: restaurar la copia previa. Que falle
+        en silencio es justo lo que no puede pasar ahí.
+        """
+        h = self.get(alias)
+        r = self._scp(h, str(local_path), f"{h.target}:{remote_path}")
+        if r.returncode != 0:
+            raise RemoteError(
+                f"no se pudo subir a {alias}:{remote_path}: {(r.stderr or '')[:200]}")
+        return f"subido a {alias}:{remote_path}"
 
     def exists(self, alias: str, path: str) -> bool:
         code, _ = self.run(alias, f"test -e {_q(path)}")

@@ -10,10 +10,27 @@ Todo lo de esta sección salió de ejercitar código que "se veía bien" para
 pasar la compuerta. Es la quinta vez que ocurre en este proyecto; ver
 `CODEX.md` §5.
 
-Los seis primeros salieron de algo distinto a las pruebas: **instalar el
-paquete y usar el producto**, con el binario `fib` y un HOME limpio, contra un
-endpoint HTTP que habla el protocolo OpenAI. Ninguno era visible desde la
-suite, y cuatro de ellos le pasan a todo el que instale.
+Los ocho primeros salieron de algo distinto a las pruebas: **instalar el
+paquete y usar el producto** —binario `fib`, HOME limpio— y **operar un
+servidor SSH real**. Ninguno era visible desde la suite.
+
+- **El undo remoto mentía.** `fib undo` sobre un `remote.write` respondía OK,
+  el journal marcaba la acción como revertida… y el archivo del servidor
+  seguía cambiado. El undoer devolvía `"fallo al restaurar"` como texto de
+  retorno, y `Journal._undo` toma cualquier retorno por éxito: solo una
+  excepción deja la acción intacta. En un producto cuyo argumento entero es
+  «puedes deshacerlo», un undo que miente es el peor fallo posible. Ahora
+  lanza, la acción se queda en `applied`, y `fib undo` dice que no pudo.
+- **La copia a servidores estaba rota en todos los hosts.** `scp` quiere el
+  puerto en `-P` y `ssh` en `-p`; se resolvía filtrando `"-p"` de
+  `ssh_args()`, lo que quitaba el flag **pero dejaba el número suelto**, y scp
+  lo tomaba por un archivo de origen (`stat local "22"`). Como `ssh_args()`
+  siempre incluye el puerto, `write()` y `fetch()` fallaban siempre — y
+  `fetch()` es la copia previa de la que depende el undo remoto, así que la
+  reversibilidad remota que promete el README nunca funcionó. El mismo error
+  estaba duplicado en el undoer. Ahora hay un `scp_args()` único, y un
+  respaldo con `-O` para servidores que no exponen SFTP (dropbear, busybox o
+  cualquiera con el subsistema quitado), donde el `scp` moderno falla entero.
 
 - **No había forma de instalarlo.** `pip install fibonacci-agent` —la primera
   línea del README y lo que ejecutan `install.sh` e `install.ps1`— falla: el
@@ -116,6 +133,15 @@ suite, y cuatro de ellos le pasan a todo el que instale.
   camino semántico de la memoria. Ahora el vector se compone por palabra.
 
 ### Añadido
+- **Telegram, verificado contra una imitación fiel de su Bot API**
+  (`tests/telegram_fake.py`). `TelegramSurface` nunca había hablado con nada,
+  y el README lo ofrece como forma de usar el agente desde el teléfono. Se
+  cubre lo que de verdad rompe un bot: que el `offset` avance —si no, procesa
+  el mismo mensaje en bucle para siempre—, que un `caption` cuente como texto
+  y una encuesta no, que los mensajes se partan por debajo del tope de 4096
+  respetando las líneas, que un desconocido no llegue al agente, y que lo que
+  exige confirmación se rechace diciendo dónde sí puede hacerse. Cobertura de
+  `surfaces/live.py`: 49% → 60%.
 - **`tests/test_cli.py`**: 60 pruebas sobre `cli.py`, que era el módulo más
   grande del proyecto y el único sin ninguna — un quinto del código, y la
   puerta por la que pasa todo usuario. Cubre despacho, `config`, `scope`,

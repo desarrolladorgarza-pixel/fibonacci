@@ -18,7 +18,7 @@ from pathlib import Path
 
 from .contracts import ToolSpec
 from .control import (
-    Remote, ScreenError, active_window, capture, click,
+    Remote, RemoteError, ScreenError, _q, active_window, capture, click,
     input_backend, press_key, scroll, type_text, window_is_sensitive,
 )
 from .identity import Authority, Decision, Principal
@@ -220,22 +220,31 @@ def attach_remote(box: ToolBox, remote: Remote,
         return remote.write(alias, path, content)
 
     def _undo_write(act) -> str:
+        """
+        Un undoer que no puede deshacer tiene que **lanzar**, no devolver el
+        fallo como texto.
+
+        `Journal._undo` toma cualquier retorno por éxito y marca la accion como
+        UNDONE; solo una excepcion la deja intacta. Devolviendo "fallo al
+        restaurar" se conseguia lo peor imaginable en este producto: `fib undo`
+        respondia ok, el journal daba la accion por revertida, y el archivo del
+        servidor seguia cambiado. Un undo que miente es peor que no tener undo.
+
+        Ademas, la subida usaba su propia copia del `scp` con el puerto mal
+        pasado, asi que fallaba siempre.
+        """
         alias, path = act.arguments["alias"], act.arguments["path"]
         snap = act.snapshot
         if snap and Path(snap).exists():
-            h = remote.get(alias)
-            import subprocess
-            r = subprocess.run(
-                ["scp", *[a for a in h.ssh_args() if a != "-p"],
-                 "-P", str(h.port), snap, f"{h.target}:{path}"],
-                capture_output=True, timeout=180)
-            if r.returncode == 0:
-                return f"restaurado {alias}:{path} desde copia previa"
-            return f"fallo al restaurar {alias}:{path}"
+            return (f"{remote.push(alias, snap, path)} "
+                    f"(copia previa de {alias}:{path})")
+
         # No existia antes: deshacer = borrarlo.
-        code, _ = remote.run(alias, f"rm -f '{path}'")
-        return (f"eliminado {alias}:{path} (no existia antes)" if code == 0
-                else f"no se pudo eliminar {alias}:{path}")
+        code, out = remote.run(alias, f"rm -f {_q(path)}")
+        if code != 0:
+            raise RemoteError(
+                f"no se pudo eliminar {alias}:{path}: {(out or '')[:200]}")
+        return f"eliminado {alias}:{path} (no existia antes)"
 
     box.register(
         ToolSpec("remote.write",

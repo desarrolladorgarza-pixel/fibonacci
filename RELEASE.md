@@ -146,9 +146,17 @@ acusen de rebranding.
 | Cobertura | 76% (`tools_control.py`, `mcp.py`, `surfaces/base.py` en lo más bajo) |
 | Dependencias runtime | ninguna (`cryptography` opcional) |
 | Plataformas | Linux, macOS, Windows, Android/Termux, BSD · x86_64 y arm64 |
-| Sin verificar | modelo vivo, Telegram/Discord reales, pantalla, SSH |
+| Verificado a mano | instalación limpia + CLI completo, MCP por stdio, SSH contra un OpenSSH real, Telegram contra una imitación fiel de su API |
+| Sin verificar | **modelo vivo**, Telegram/Discord contra sus servidores, pantalla |
 
-Esa última fila es la razón del orden recomendado en la primera sección: sigue
-sin haber una sola prueba contra un LLM real, un bot de Telegram real o un
-servidor por SSH real. La cobertura mide qué código se ejecutó, no si el
-producto funciona en el mundo.
+Esa última fila es la razón del orden recomendado en la primera sección. El
+salto de 0.7.0 fue ejercitar el producto instalado en vez de solo la suite:
+apareció que no había forma de instalarlo, que `fib doctor` moría con una
+dependencia opcional rota, y que **el undo remoto decía haber revertido sin
+revertir**. Ninguno lo veía la suite.
+
+Lo que sigue sin tocarse es un LLM de verdad. Todo el camino del modelo se ha
+probado contra endpoints que hablan el protocolo OpenAI, y eso valida la
+plomería, no el comportamiento: JSON mal formado, tool calls inventadas,
+prosa alrededor del JSON y negativas del modelo son cosas que solo aparecen
+con un modelo vivo.

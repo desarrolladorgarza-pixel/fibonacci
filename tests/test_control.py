@@ -197,6 +197,39 @@ def test_deteccion_de_comandos_mutantes():
     assert not _mutates_shell("cat < input.txt"), "leer de un archivo no muta"
 
 
+def test_scp_recibe_el_puerto_en_P_mayuscula_y_sin_sobras():
+    """
+    El fallo más grave del control remoto, y solo salía usándolo contra un
+    servidor de verdad.
+
+    `scp` quiere `-P` y `ssh` quiere `-p`. Se resolvía filtrando `"-p"` de
+    `ssh_args()`, lo que quitaba el flag **pero dejaba el número suelto**: scp
+    lo tomaba por un archivo de origen y abortaba con `stat local "22"`. Como
+    `ssh_args()` siempre incluye el puerto, `write()` y `fetch()` fallaban en
+    TODOS los hosts —no solo en los de puerto raro— y con ellos el undo
+    remoto, que depende de `fetch()` para guardar la copia previa.
+    """
+    h = RemoteHost("x", "servidor", "root", port=2222, key_file="/tmp/k")
+
+    assert "-p" in h.ssh_args() and "2222" in h.ssh_args()
+
+    scp = h.scp_args()
+    assert "-P" in scp, "scp usa -P mayúscula"
+    assert "-p" not in scp, "-p en scp significa 'preservar tiempos', no puerto"
+    assert scp[scp.index("-P") + 1] == "2222"
+    # Ningún argumento suelto: todo valor va precedido de su flag.
+    sueltos = [a for i, a in enumerate(scp)
+               if not a.startswith("-") and (i == 0 or not scp[i - 1].startswith("-"))]
+    assert not sueltos, f"scp interpretaría esto como rutas: {sueltos}"
+
+
+def test_el_puerto_por_defecto_tampoco_se_cuela_suelto():
+    h = RemoteHost("x", "servidor", "root")      # puerto 22
+    scp = h.scp_args()
+    assert scp[scp.index("-P") + 1] == "22"
+    assert scp.count("22") == 1, "el puerto solo debe aparecer tras su flag"
+
+
 def test_escritura_remota_es_reversible(tmp_path):
     """Los archivos remotos SÍ tienen undo, a diferencia de los comandos."""
     from fibonacci.tools_control import attach_remote
@@ -211,6 +244,48 @@ def test_escritura_remota_es_reversible(tmp_path):
 
     r = next(s for s in box.specs() if s.name == "remote.run")
     assert not r.reversible, "un comando remoto no se puede deshacer"
+
+
+def test_un_undo_remoto_que_falla_no_se_marca_como_hecho(tmp_path):
+    """
+    El peor fallo posible en este producto, y solo salía contra un servidor de
+    verdad: `fib undo` respondía OK, el journal daba la acción por revertida, y
+    el archivo del servidor seguía cambiado.
+
+    La causa: el undoer devolvía "fallo al restaurar" como texto de retorno, y
+    `Journal._undo` toma cualquier retorno por éxito — solo una excepción deja
+    la acción intacta.
+    """
+    from fibonacci.contracts import ActionStatus
+    from fibonacci.tools_control import attach_remote
+
+    class RemotoCaido(Remote):
+        """Un servidor que no responde a nada."""
+
+        def write(self, alias, path, content):
+            return f"escrito {alias}:{path}"
+
+        def exists(self, alias, path):
+            return False
+
+        def push(self, alias, local_path, remote_path):
+            raise RemoteError("connection refused")
+
+        def run(self, alias, command, timeout=120):
+            return 255, "ssh: connect to host: Connection refused"
+
+    j = Journal(tmp_path / "j.db", snapshots=tmp_path / "s")
+    box = ToolBox(j, root=tmp_path / "ws", confirm=lambda d, x: True)
+    attach_remote(box, RemotoCaido(
+        {"stg": RemoteHost("stg", "h", "u", scope="free")}))
+
+    box.invoke("remote.write", {"alias": "stg", "path": "/tmp/x.conf",
+                                "content": "nuevo"}, "s1")
+
+    ok, msg = j.undo_last("s1")
+    assert not ok, "un undo que no revirtió nada no puede decir que sí"
+    assert j.history("s1")[0].status is ActionStatus.APPLIED, \
+        "la acción debe seguir pendiente de deshacer, no marcada como UNDONE"
 
 
 def test_ambitos_por_host():

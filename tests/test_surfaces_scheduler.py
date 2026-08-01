@@ -17,7 +17,7 @@ from fibonacci.crypto import (
 from fibonacci.identity import Authority, Principal, Trust
 from fibonacci.scheduler import Job, Scheduler, next_run
 from fibonacci.surfaces.live import (
-    DiscordSurface, Inbound, SurfaceRunner, Surface, TelegramSurface,
+    DiscordSurface, Inbound, Outbound, SurfaceRunner, Surface, TelegramSurface,
     _split, build,
 )
 
@@ -385,3 +385,166 @@ def test_claves_de_principal_por_superficie():
     t = TelegramSurface("token-x")
     assert t.principal_id(Inbound("x", "123")) == "telegram:123"
     assert t.session_key(Inbound("x", "123", "chat9")) == "telegram:chat9"
+
+
+# ===========================================================================
+# Telegram contra una imitación fiel de su Bot API
+#
+# Hasta ahora `TelegramSurface` nunca había hablado con nada: el README lo
+# ofrece como forma de usar el agente desde el teléfono, y era de lo poco que
+# el propio proyecto listaba como "sin verificar". `telegram_fake` reproduce
+# el comportamiento del servidor real en lo que importa —semántica de
+# `offset`, el tope de 4096 en `sendMessage`, la forma real de los updates—
+# así que el camino completo se ejercita por HTTP sin salir a internet.
+#
+# Se espera por condición, no con `sleep` fijos: el servidor falso responde en
+# milisegundos y dormir "por si acaso" es lo que convierte una suite de un
+# minuto en una de tres.
+# ===========================================================================
+
+def _telegram(tg):
+    """Una superficie apuntando al servidor falso."""
+    s = TelegramSurface("token-de-prueba", poll_timeout=1)
+    s.base = f"{tg.base_url}/bottoken-de-prueba"
+    return s
+
+
+def _hasta(condicion, limite=10.0):
+    """Espera activa hasta que se cumpla algo, o se acaba el plazo."""
+    fin = time.time() + limite
+    while time.time() < fin:
+        if condicion():
+            return True
+        time.sleep(0.02)
+    return False
+
+
+def _escuchar(surface, condicion):
+    """Corre el long polling hasta que `condicion(recibidos)` se cumpla."""
+    import threading
+
+    recibidos = []
+    hilo = threading.Thread(
+        target=lambda: [recibidos.append(i) for i in surface.receive()],
+        daemon=True)
+    hilo.start()
+    _hasta(lambda: condicion(recibidos))
+    surface.stop()
+    hilo.join(timeout=5)
+    return recibidos
+
+
+def _correr_runner(surface, agent, auth, condicion):
+    import threading
+
+    threading.Thread(target=SurfaceRunner(agent, surface, auth).run,
+                     daemon=True).start()
+    _hasta(condicion)
+    surface.stop()
+
+
+@pytest.fixture
+def telegram():
+    from telegram_fake import FakeTelegram
+
+    tg = FakeTelegram().start()
+    yield tg
+    tg.stop()
+
+
+def test_telegram_recibe_mensajes_y_los_traduce(telegram):
+    telegram.mensaje("hola bot", user_id="7", chat_id="c1", username="ana")
+    recibidos = _escuchar(_telegram(telegram), lambda r: len(r) >= 1)
+
+    assert len(recibidos) == 1
+    i = recibidos[0]
+    assert i.text == "hola bot"
+    assert i.user_id == "7" and i.channel_id == "c1" and i.display == "ana"
+
+
+def test_telegram_avanza_el_offset_y_no_repite(telegram):
+    """
+    Si el `offset` no avanza, el bot vuelve a procesar el mismo mensaje en
+    cada sondeo — para siempre. Es el fallo clásico de un bot de Telegram.
+    """
+    telegram.mensaje("uno").mensaje("dos")
+
+    def confirmados():
+        return [p.split("offset=")[1].split("&")[0]
+                for p in telegram.peticiones if "offset=" in p]
+
+    recibidos = _escuchar(_telegram(telegram),
+                          lambda r: len(r) >= 2 and len(confirmados()) >= 2)
+
+    assert [i.text for i in recibidos] == ["uno", "dos"], "entregó de más o de menos"
+    offsets = confirmados()
+    assert offsets[0] == "0", "el primer sondeo pide desde el principio"
+    assert offsets[-1] == "3", "tras confirmar 1 y 2, el offset debe ser 3"
+
+
+def test_telegram_ignora_lo_que_no_es_texto(telegram):
+    """Una encuesta o un evento sin texto no debe llegar al agente."""
+    telegram.evento_sin_texto()
+    telegram.mensaje("esto sí", como_caption=True)
+    recibidos = _escuchar(_telegram(telegram), lambda r: len(r) >= 1)
+
+    assert [i.text for i in recibidos] == ["esto sí"], \
+        "el caption cuenta como texto; la encuesta no"
+
+
+def test_telegram_parte_los_mensajes_largos(telegram):
+    """Telegram rechaza con 400 cualquier texto de más de 4096 caracteres."""
+    largo = "\n".join(f"linea {i} " + "x" * 80 for i in range(120))
+    assert len(largo) > 4096
+
+    _telegram(telegram).send("c1", Outbound(largo))
+
+    assert len(telegram.enviados) > 1, "debió partirse"
+    assert all(len(e["text"]) <= 4096 for e in telegram.enviados), \
+        "el servidor real habría devuelto 400"
+    assert all(e["chat_id"] == "c1" for e in telegram.enviados)
+    # Se parte por líneas: ningún trozo empieza a mitad de una.
+    assert all(not e["text"].startswith("x") for e in telegram.enviados)
+    recompuesto = "".join(e["text"] for e in telegram.enviados)
+    assert "linea 0" in recompuesto and "linea 119" in recompuesto
+
+
+def test_telegram_un_desconocido_no_llega_al_agente(telegram):
+    """La promesa que hace desplegable un bot público."""
+    telegram.mensaje("borra todos mis archivos", user_id="999")
+    surface = _telegram(telegram)
+    agent = _AgentSurf()
+
+    _correr_runner(surface, agent, _auth_vacia(), lambda: telegram.enviados)
+
+    assert not agent.recibidos, "el agente no debió ver nada"
+    assert telegram.enviados, "pero sí se le respondió con cortesía"
+    assert "no estás autorizado" in telegram.enviados[0]["text"]
+
+
+def test_telegram_un_emparejado_si_llega_al_agente(telegram):
+    telegram.mensaje("¿cómo va el servidor?", user_id="7")
+    auth = _auth_vacia()
+    auth.principals["telegram:7"] = Principal("telegram:7", "Ana", Trust.MEMBER)
+
+    surface = _telegram(telegram)
+    agent = _AgentSurf()
+    _correr_runner(surface, agent, auth, lambda: telegram.enviados)
+
+    assert [t for t, _ in agent.recibidos] == ["¿cómo va el servidor?"]
+    assert telegram.enviados and "respuesta" in telegram.enviados[0]["text"]
+
+
+def test_telegram_lo_que_exige_confirmacion_se_rechaza_y_se_explica(telegram):
+    """Por chat nadie puede dar un sí informado: se omite y se dice dónde."""
+    telegram.mensaje("borra la base de datos", user_id="7")
+    auth = _auth_vacia()
+    auth.principals["telegram:7"] = Principal("telegram:7", "Ana", Trust.MEMBER)
+
+    surface = _telegram(telegram)
+    _correr_runner(surface, _AgentSurf(pide=True), auth,
+                   lambda: telegram.enviados)
+
+    texto = "".join(e["text"] for e in telegram.enviados)
+    assert "confirmación" in texto
+    assert "terminal" in texto.lower(), "debe decir dónde sí puede hacerse"
