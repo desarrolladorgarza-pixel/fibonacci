@@ -205,9 +205,11 @@ fib resume task_a1b2c3
 
 El trabajo es un objeto persistido, no un hilo en memoria.
 
-**Límite honesto:** hoy el estado vive en SQLite local. "Desde el teléfono"
-significa SSH o Termux contra la misma máquina, o copiar los tres `.db`. La
-sincronización entre dispositivos está en el roadmap, no implementada.
+**Límite honesto:** el estado vive en SQLite local. Para retomarlo en otro
+dispositivo hay que sincronizar a mano (`fib sync`, más abajo) o entrar por SSH
+o Termux a la misma máquina. No hay servidor ni replicación en vivo: si editas
+la misma tarea en dos aparatos sin sincronizar entre medias, gana la que esté
+más avanzada cuando por fin se encuentren.
 
 ## Multiplataforma de verdad
 
@@ -449,9 +451,16 @@ if not me_gusto:
 
 ## Estado
 
-v0.7.0 — 256 pruebas (220 unitarias + 36 de aceptación). Cobertura ~60%:
-`cli.py`, `mesh/` y `surfaces/live.py` siguen sin pruebas propias, y está
-marcado como tal en `CODEX.md`.
+v0.7.0 — 339 pruebas (303 unitarias + 36 de aceptación). Cobertura 76%.
+
+Lo que sigue sin cubrir, para que no haya que adivinarlo: `tools_control.py`
+(pantalla y SSH) y `mcp.py` al 29%, `surfaces/base.py` en cero y
+`surfaces/live.py` al 49%. Está marcado en `CODEX.md`.
+
+Y una advertencia que la cobertura no da: **nada se ha probado contra un
+modelo vivo, un bot de Telegram real, una pantalla real ni un servidor por
+SSH real.** La cobertura mide qué código se ejecutó, no si el producto
+funciona en el mundo.
 
 Cada versión de este proyecto salió de auditar la anterior, y en cada auditoría
 aparecieron bugs reales en código que se veía bien. Están en el `CHANGELOG.md`
@@ -472,12 +481,12 @@ deshace** — y eso es una excepción en tiempo de registro, no una convención.
 
 ```bash
 pip install -e ".[dev,crypto]"
-make check        # ruff + 220 pruebas
+make check        # ruff + las 339 pruebas
 make gaps         # dónde falta cobertura
 ```
 
-Cobertura actual ~60%: `cli.py`, `mesh/` y `surfaces/live.py` están sin
-pruebas. `CODEX.md` tiene el mapa de lo que falta y el andamiaje ya montado
+Cobertura actual 76%. Lo más flaco es `tools_control.py`, `mcp.py` y
+`surfaces/`. `CODEX.md` tiene el mapa de lo que falta y el andamiaje ya montado
 (`fake_model` levanta un servidor que habla el protocolo OpenAI de verdad, así
 que el bucle completo del agente se prueba sin GPU).
 
