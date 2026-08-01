@@ -61,6 +61,11 @@ jobs:
           # resultado. El job nunca terminaba —ni en verde ni en rojo— así que
           # la promesa que decía verificar no se verificaba desde el principio.
           sudo useradd -m sinred
+          # `sinred` tiene que poder recorrer hasta el repo: el obstáculo es
+          # /home/runner, que es 0700, no el repo. Sin esto pytest revienta con
+          # EACCES al buscar su archivo de configuración hacia arriba.
+          D="$GITHUB_WORKSPACE"
+          while [ "$D" != "/" ]; do sudo chmod o+x "$D"; D=$(dirname "$D"); done
           sudo chmod -R a+rX "$GITHUB_WORKSPACE"
           PY=$(which python)
           sudo iptables -A OUTPUT -m owner --uid-owner sinred -o lo -j ACCEPT
