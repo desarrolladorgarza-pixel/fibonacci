@@ -713,6 +713,20 @@ def cmd_schedule(args) -> int:
         cfg = load_config()
         agent = _boot(cfg)
         deliver = _make_deliver()
+
+        if args.once:
+            # Una pasada y salir: lo invoca algo externo cada N minutos.
+            # Termux no tiene systemd y mata los procesos largos, así que un
+            # demonio no es una opción ahí.
+            hechos = sch.tick(agent, deliver)
+            if not hechos:
+                print(c("  Nada pendiente ahora mismo.", "90"))
+            for r in hechos:
+                print(c(f"  {'✓' if r['ok'] else '✗'} {r['job']}  "
+                        f"${r['costo']:.4f}  {r['ms']/1000:.1f}s",
+                        "32" if r["ok"] else "31"))
+            return 0 if all(r["ok"] for r in hechos) else 1
+
         print(c(f"  Programador activo — {len(sch.list(True))} tarea(s). "
                 "Ctrl-C para salir.\n", "36"))
         try:
@@ -1034,6 +1048,8 @@ def main(argv=None) -> int:
     sh.add_argument("--surface", choices=["telegram", "discord"])
     sh.add_argument("--channel")
     sh.add_argument("--budget", type=float, default=0.5)
+    sh.add_argument("--once", action="store_true",
+                    help="una pasada y salir (Termux, cron, tareas de Windows)")
     sh.set_defaults(fn=cmd_schedule)
 
     sv = sub.add_parser("serve", help="conecta una superficie de mensajería")

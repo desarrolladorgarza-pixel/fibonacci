@@ -153,6 +153,18 @@ class FakeModelServer:
         self._queue.append({"kind": "text", "text": json.dumps(obj)})
         return self
 
+    def reply_raw(self, message: dict, finish: str = "stop") -> "FakeModelServer":
+        """
+        Devuelve el `message` tal cual, sin construirlo por nosotros.
+
+        Es la puerta para probar lo que un modelo de verdad hace y un doble
+        educado nunca: `content: null`, `arguments` que no son JSON, una tool
+        call con nombre inventado, respuestas cortadas. Ver
+        `test_modelo_adverso.py`.
+        """
+        self._queue.append({"kind": "raw", "message": message, "finish": finish})
+        return self
+
     def fail(self, status: int = 500, times: int = 1) -> "FakeModelServer":
         for _ in range(times):
             self._queue.append({"kind": "fail", "status": status})
@@ -257,8 +269,16 @@ class FakeModelServer:
 
         self._srv = ThreadingHTTPServer(("127.0.0.1", self.port), H)
         self.port = self._srv.server_address[1]
-        threading.Thread(target=self._srv.serve_forever, daemon=True).start()
-        time.sleep(0.05)
+        # `poll_interval` bajo: `shutdown()` espera a que el bucle lo
+        # note, y el medio segundo por omision se pagaba en CADA prueba
+        # que levanta un servidor. Eran 48 s de los 101 que tardaba la
+        # suite: mas de la mitad del tiempo, esperando a nada.
+        threading.Thread(target=lambda: self._srv.serve_forever(0.01),
+                         daemon=True).start()
+        # Sin `sleep`: `ThreadingHTTPServer` ya hizo bind y listen en su
+        # constructor, asi que el socket acepta conexiones antes de que
+        # `serve_forever` arranque — se encolan en el backlog. Dormir
+        # "por si acaso" aqui costaba segundos repartidos por toda la suite.
         return self
 
     def stop(self) -> None:
@@ -288,6 +308,13 @@ class FakeModelServer:
 
 
 def _completion(accion: dict, model: str) -> dict:
+    if accion["kind"] == "raw":
+        return {"id": "cmpl-fake", "object": "chat.completion", "model": model,
+                "choices": [{"index": 0, "message": accion["message"],
+                             "finish_reason": accion.get("finish", "stop")}],
+                "usage": {"prompt_tokens": 100, "completion_tokens": 20,
+                          "total_tokens": 120}}
+
     msg: dict = {"role": "assistant", "content": accion.get("text", "")}
     if accion["kind"] == "tool":
         msg["tool_calls"] = [{
@@ -389,8 +416,7 @@ def http_server():
         do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = _responder
 
     srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    time.sleep(0.05)
+    threading.Thread(target=lambda: srv.serve_forever(0.01), daemon=True).start()
 
     class Handle:
         base_url = f"http://127.0.0.1:{srv.server_address[1]}"

@@ -459,24 +459,25 @@ if not me_gusto:
 
 ## Estado
 
-v0.7.0 — 339 pruebas (303 unitarias + 36 de aceptación). Cobertura 76%.
+v0.7.0 — 425 pruebas (389 unitarias + 36 de aceptación) en 52 s. Cobertura 80%.
 
-Lo que sigue sin cubrir, para que no haya que adivinarlo: `tools_control.py`
-(pantalla y SSH) y `mcp.py` al 29%, `surfaces/base.py` en cero y
-`surfaces/live.py` al 49%. Está marcado en `CODEX.md`.
+Lo que sigue más flojo, para que no haya que adivinarlo: `tools_control.py` al
+45% y `platform.py` al 48%; ambos son caminos que dependen del sistema
+operativo bajo el que corras.
 
 Y lo que la cobertura no dice — qué se ha ejercitado de verdad y qué no:
 
 | | |
 |---|---|
 | **SSH** | Verificado contra un OpenSSH real: comandos, lectura, escritura, copia previa, undo remoto y los tres ámbitos. Destapó dos fallos, uno de ellos grave. |
-| **Telegram** | Verificado contra una imitación fiel de su Bot API —`offset`, tope de 4096, forma de los updates—, **no contra los servidores de Telegram**. |
+| **Telegram y Discord** | Verificados contra imitaciones fieles de sus APIs —`offset`, topes de longitud, filtrado de bots, forma real de los mensajes—, **no contra sus servidores**. |
 | **CLI, MCP, bóveda, sync, programador** | Ejercitados sobre el paquete instalado, con el binario `fib`. |
-| **Modelo vivo** | **Sin verificar.** Todo se ha probado contra endpoints que hablan el protocolo OpenAI, nunca contra un LLM real. |
-| **Pantalla, Discord** | **Sin verificar.** |
+| **Malformaciones del modelo** | 44 pruebas disparan lo que un LLM real produce: JSON envuelto en prosa, tool calls inventadas, argumentos del tipo equivocado, respuestas cortadas. |
+| **Modelo vivo** | **Sin verificar.** Nunca se ha hablado con un LLM real: se cubre la *clase* de fallo que provoca, no su comportamiento. |
+| **Pantalla** | Solo la degradación sin backend y el enrutado a `xdotool`. Nunca contra un X11 vivo. |
 
-Esa penúltima fila es la importante: el protocolo está probado, el
-comportamiento de un modelo real no.
+La fila del modelo vivo es la que importa: el protocolo está probado y las
+malformaciones también, pero el comportamiento de un modelo real no.
 
 Cada versión de este proyecto salió de auditar la anterior, y en cada auditoría
 aparecieron bugs reales en código que se veía bien. Están en el `CHANGELOG.md`
@@ -497,12 +498,11 @@ deshace** — y eso es una excepción en tiempo de registro, no una convención.
 
 ```bash
 pip install -e ".[dev,crypto]"
-make check        # ruff + las 339 pruebas
+make check        # ruff + las 425 pruebas
 make gaps         # dónde falta cobertura
 ```
 
-Cobertura actual 76%. Lo más flaco es `tools_control.py`, `mcp.py` y
-`surfaces/`. `CODEX.md` tiene el mapa de lo que falta y el andamiaje ya montado
+Cobertura actual 80%. Lo más flaco es `tools_control.py` y `platform.py`. `CODEX.md` tiene el mapa de lo que falta y el andamiaje ya montado
 (`fake_model` levanta un servidor que habla el protocolo OpenAI de verdad, así
 que el bucle completo del agente se prueba sin GPU).
 

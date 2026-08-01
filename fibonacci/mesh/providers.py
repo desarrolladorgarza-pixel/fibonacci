@@ -12,12 +12,15 @@ Solo stdlib: importa en Termux y en aarch64 sin compilar nada.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 import uuid
 from typing import Any
 
 from ..contracts import Completion, Message, ToolCall, ToolSpec
+
+log = logging.getLogger("fibonacci.mesh.providers")
 
 
 class ProviderError(RuntimeError):
@@ -41,6 +44,58 @@ def _post(url: str, headers: dict, payload: dict, timeout: float) -> dict:
         raise ProviderError("http", f"{e.code}: {body}", retryable=e.code >= 500)
     except Exception as e:  # noqa: BLE001
         raise ProviderError("http", str(e), retryable=True)
+
+
+# ---------------------------------------------------------------------------
+# Normalización de lo que devuelve el modelo
+#
+# Aquí es donde la salida de un LLM —entrada NO confiable— se convierte en
+# objetos tipados. Todo lo de más arriba en la pila asume que `text` es un
+# `str` y que los argumentos de una herramienta son un `dict`; si eso no se
+# garantiza en este punto, el error aparece cinco capas después con un
+# `AttributeError` incomprensible y se lleva por delante el turno entero.
+#
+# Un modelo de verdad manda `content: null`, argumentos que no son JSON, un
+# número donde va un texto, `"notas.txt"` donde va un objeto, o un `function`
+# que es una cadena. Ninguna de esas cosas es un error del usuario ni merece
+# una excepción: merece un turno que sigue y un modelo que se entera.
+# ---------------------------------------------------------------------------
+
+def _texto(valor: object) -> str:
+    """`content` debería ser texto o nulo. A veces no lo es."""
+    if valor is None:
+        return ""
+    return valor if isinstance(valor, str) else str(valor)
+
+
+def _parse_tool_calls(crudo: object) -> list[ToolCall]:
+    calls: list[ToolCall] = []
+    if not isinstance(crudo, list):
+        return calls
+
+    for tc in crudo:
+        if not isinstance(tc, dict):
+            continue
+        fn = tc.get("function")
+        if not isinstance(fn, dict):
+            continue
+        nombre = fn.get("name")
+        if not isinstance(nombre, str) or not nombre.strip():
+            continue
+
+        try:
+            args = json.loads(fn.get("arguments") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            args = {}
+        if not isinstance(args, dict):
+            # `"notas.txt"` o `[1,2,3]` donde iba un objeto. No hay forma de
+            # adivinar a qué parámetro corresponde, así que se descarta: la
+            # herramienta dirá qué le falta y el modelo puede corregir.
+            log.debug("Argumentos de '%s' no son un objeto: %r", nombre, args)
+            args = {}
+
+        calls.append(ToolCall(tc.get("id") or uuid.uuid4().hex, nombre.strip(), args))
+    return calls
 
 
 class Provider:
@@ -94,17 +149,10 @@ class OpenAICompatProvider(Provider):
         msg = (data.get("choices") or [{}])[0].get("message", {}) or {}
         usage = data.get("usage", {}) or {}
 
-        calls = []
-        for tc in msg.get("tool_calls") or []:
-            fn = tc.get("function", {}) or {}
-            try:
-                args = json.loads(fn.get("arguments") or "{}")
-            except json.JSONDecodeError:
-                args = {}
-            calls.append(ToolCall(tc.get("id") or uuid.uuid4().hex, fn.get("name", ""), args))
+        calls = _parse_tool_calls(msg.get("tool_calls"))
 
         return Completion(
-            text=msg.get("content") or "", tool_calls=calls, model=model,
+            text=_texto(msg.get("content")), tool_calls=calls, model=model,
             provider=self.name, prompt_tokens=usage.get("prompt_tokens", 0),
             completion_tokens=usage.get("completion_tokens", 0),
             latency_ms=int((time.time() - t0) * 1000), raw=data,
@@ -198,12 +246,23 @@ class AnthropicProvider(Provider):
 
         t0 = time.time()
         data = _post(f"{self.base_url}/messages", self._h(), payload, timeout)
+        # Mismo criterio que en el camino OpenAI: lo que llega del modelo se
+        # normaliza aquí, no cinco capas más arriba.
         text, calls = [], []
-        for b in data.get("content", []):
+        bloques = data.get("content")
+        for b in bloques if isinstance(bloques, list) else []:
+            if not isinstance(b, dict):
+                continue
             if b.get("type") == "text":
-                text.append(b.get("text", ""))
+                text.append(_texto(b.get("text")))
             elif b.get("type") == "tool_use":
-                calls.append(ToolCall(b.get("id", ""), b.get("name", ""), b.get("input", {})))
+                nombre = b.get("name")
+                if not isinstance(nombre, str) or not nombre.strip():
+                    continue
+                entrada = b.get("input")
+                calls.append(ToolCall(
+                    str(b.get("id") or uuid.uuid4().hex), nombre.strip(),
+                    entrada if isinstance(entrada, dict) else {}))
         u = data.get("usage", {}) or {}
         return Completion(
             text="\n".join(text), tool_calls=calls, model=model, provider=self.name,

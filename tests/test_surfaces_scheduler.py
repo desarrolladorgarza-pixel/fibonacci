@@ -548,3 +548,162 @@ def test_telegram_lo_que_exige_confirmacion_se_rechaza_y_se_explica(telegram):
     texto = "".join(e["text"] for e in telegram.enviados)
     assert "confirmación" in texto
     assert "terminal" in texto.lower(), "debe decir dónde sí puede hacerse"
+
+
+# ===========================================================================
+# Discord contra una imitación de su API REST
+# ===========================================================================
+
+def _discord(fd, canales=("c1",)):
+    s = DiscordSurface("token-de-prueba", list(canales), interval=0.05)
+    s.base = fd.base_url
+    return s
+
+
+@pytest.fixture
+def discord():
+    from discord_fake import FakeDiscord
+
+    fd = FakeDiscord().start()
+    yield fd
+    fd.stop()
+
+
+def test_discord_recibe_y_traduce(discord):
+    discord.mensaje("hola", canal="c1", user_id="7", username="ana")
+    recibidos = _escuchar(_discord(discord), lambda r: len(r) >= 1)
+
+    assert len(recibidos) == 1
+    i = recibidos[0]
+    assert i.text == "hola" and i.user_id == "7" and i.channel_id == "c1"
+    assert i.display == "ana"
+
+
+def test_discord_ignora_a_los_bots(discord):
+    """
+    Discord devuelve también los mensajes del propio bot. Si no se filtran, el
+    agente lee su propia respuesta, la contesta, y se responde a sí mismo para
+    siempre — gastando presupuesto en cada vuelta.
+    """
+    discord.mensaje("respuesta anterior del bot", es_bot=True, username="fibo")
+    discord.mensaje("hola de verdad", user_id="7")
+    recibidos = _escuchar(_discord(discord), lambda r: len(r) >= 1)
+
+    assert [i.text for i in recibidos] == ["hola de verdad"]
+
+
+def test_discord_los_procesa_del_mas_viejo_al_mas_nuevo(discord):
+    """La API los devuelve al revés; el orden de una conversación importa."""
+    discord.mensaje("primero").mensaje("segundo").mensaje("tercero")
+    recibidos = _escuchar(_discord(discord), lambda r: len(r) >= 3)
+
+    assert [i.text for i in recibidos] == ["primero", "segundo", "tercero"]
+
+
+def test_discord_avanza_after_y_no_repite(discord):
+    """Sin `after`, cada vuelta reprocesa lo mismo."""
+    discord.mensaje("uno").mensaje("dos")
+
+    def con_after():
+        return [p for p in discord.peticiones if "after=" in p]
+
+    recibidos = _escuchar(_discord(discord),
+                          lambda r: len(r) >= 2 and con_after())
+
+    assert [i.text for i in recibidos] == ["uno", "dos"], "no debe repetir"
+    assert con_after(), "la segunda vuelta debe pedir solo lo posterior"
+    assert "after=2" in con_after()[-1]
+
+
+def test_discord_ignora_mensajes_vacios(discord):
+    """Una imagen sin texto no tiene nada que responder."""
+    discord.mensaje("", user_id="7")
+    discord.mensaje("esto sí", user_id="7")
+    recibidos = _escuchar(_discord(discord), lambda r: len(r) >= 1)
+
+    assert [i.text for i in recibidos] == ["esto sí"]
+
+
+def test_discord_varios_canales(discord):
+    discord.mensaje("desde c1", canal="c1")
+    discord.mensaje("desde c2", canal="c2")
+    recibidos = _escuchar(_discord(discord, ("c1", "c2")), lambda r: len(r) >= 2)
+
+    assert {i.channel_id for i in recibidos} == {"c1", "c2"}
+
+
+def test_discord_parte_por_debajo_del_tope(discord):
+    """Discord rechaza con 400 lo que pase de 2000 caracteres."""
+    largo = "\n".join(f"linea {i} " + "y" * 60 for i in range(80))
+    assert len(largo) > 2000
+
+    _discord(discord).send("c1", Outbound(largo))
+
+    assert len(discord.enviados) > 1, "debió partirse"
+    assert all(len(e["content"]) <= 2000 for e in discord.enviados), \
+        "el servidor real habría devuelto 400"
+    assert all(e["channel_id"] == "c1" for e in discord.enviados)
+
+
+def test_discord_un_desconocido_no_llega_al_agente(discord):
+    discord.mensaje("borra la base de datos", user_id="999")
+    surface = _discord(discord)
+    agent = _AgentSurf()
+
+    _correr_runner(surface, agent, _auth_vacia(), lambda: discord.enviados)
+
+    assert not agent.recibidos
+    assert discord.enviados and "no estás autorizado" in discord.enviados[0]["content"]
+
+
+# ===========================================================================
+# El contrato de extensión
+# ===========================================================================
+
+def test_el_contrato_publicado_es_el_que_usa_el_runtime():
+    """
+    `surfaces/base.py` documenta cómo escribir una superficie nueva, y el
+    README lo vende como "un archivo, no un parche al gateway".
+
+    Declaraba sus propios `Inbound`/`Outbound`/`Surface`, distintos de los que
+    `live.py` usa de verdad: nadie lo importaba, y a su `Inbound` le faltaba
+    `display`, que `SurfaceRunner` sí lee. Seguir el contrato publicado
+    producía una superficie que reventaba en cuanto llegara un mensaje.
+    """
+    from fibonacci.surfaces import base, live
+
+    assert base.Inbound is live.Inbound
+    assert base.Outbound is live.Outbound
+    assert base.Surface is live.Surface
+
+
+def test_una_superficie_escrita_contra_el_contrato_funciona():
+    """La prueba de que el contrato publicado sirve: se escribe una superficie
+    importando solo de `base` y `SurfaceRunner` la conduce sin tocarla."""
+    from fibonacci.surfaces.base import Inbound, Outbound, Surface, SurfaceRunner
+
+    class MiPlataforma(Surface):
+        name = "mi-plataforma"
+
+        def __init__(self):
+            self.enviados = []
+
+        def receive(self):
+            yield Inbound("hola", user_id="7", channel_id="c1", display="Ana")
+
+        def send(self, channel_id, out: Outbound):
+            self.enviados.append(out.text)
+
+    auth = _auth_vacia()
+    auth.principals["mi-plataforma:7"] = Principal(
+        "mi-plataforma:7", "Ana", Trust.MEMBER)
+
+    surf = MiPlataforma()
+    agent = _AgentSurf()
+    SurfaceRunner(agent, surf, auth).run()
+
+    assert [t for t, _ in agent.recibidos] == ["hola"]
+    assert surf.enviados == ["respuesta"]
+    # Y los valores por defecto del contrato siguen ahí.
+    assert surf.session_key(Inbound("x", "7", "c1")) == "mi-plataforma:c1"
+    assert surf.principal_id(Inbound("x", "7")) == "mi-plataforma:7"

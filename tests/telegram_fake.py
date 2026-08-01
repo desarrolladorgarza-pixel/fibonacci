@@ -14,7 +14,6 @@ Reproduce lo que importa del servidor real:
 
 import json
 import threading
-import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -111,8 +110,16 @@ class FakeTelegram:
 
         self._srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
         self.port = self._srv.server_address[1]
-        threading.Thread(target=self._srv.serve_forever, daemon=True).start()
-        time.sleep(0.05)
+        # `poll_interval` bajo: `shutdown()` espera a que el bucle lo
+        # note, y el medio segundo por omision se pagaba en CADA prueba
+        # que levanta un servidor. Eran 48 s de los 101 que tardaba la
+        # suite: mas de la mitad del tiempo, esperando a nada.
+        threading.Thread(target=lambda: self._srv.serve_forever(0.01),
+                         daemon=True).start()
+        # Sin `sleep`: `ThreadingHTTPServer` ya hizo bind y listen en su
+        # constructor, asi que el socket acepta conexiones antes de que
+        # `serve_forever` arranque — se encolan en el backlog. Dormir
+        # "por si acaso" aqui costaba segundos repartidos por toda la suite.
         return self
 
     def stop(self):

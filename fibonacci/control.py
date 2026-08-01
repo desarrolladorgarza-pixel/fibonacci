@@ -196,6 +196,24 @@ def _has(tool: str) -> bool:
     return shutil.which(tool) is not None
 
 
+def _sin_backend(accion: str = "esta acción") -> InputError:
+    """
+    Un solo mensaje para una sola causa.
+
+    Cada función decía la suya: `click` explicaba qué instalar, `type_text`
+    soltaba un escueto "sin backend de entrada", y `scroll` culpaba a la
+    plataforma —"scroll no soportado en esta plataforma"— cuando lo único que
+    pasaba era que faltaba `xdotool`. En un servidor sin GUI, que es donde más
+    se despliega esto, el usuario se quedaba pensando que su sistema no podía
+    en vez de instalar un paquete.
+    """
+    if PLATFORM.os == "windows":
+        return InputError(f"{accion} no está implementada en Windows.")
+    return InputError(
+        f"no puedo {accion}: falta un backend de entrada. "
+        "Instala xdotool (X11) o ydotool (Wayland).")
+
+
 def click(x: int, y: int, button: str = "left", double: bool = False) -> str:
     if PLATFORM.os == "macos":
         clicks = 2 if double else 1
@@ -221,8 +239,7 @@ Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern void 
                        capture_output=True, timeout=10)
         subprocess.run(["ydotool", "click", "0xC0"], capture_output=True, timeout=10)
     else:
-        raise InputError("sin backend de entrada. Instala xdotool (X11) o "
-                         "ydotool (Wayland).")
+        raise _sin_backend("hacer clic")
     return f"clic {button}{' doble' if double else ''} en ({x}, {y})"
 
 
@@ -244,7 +261,7 @@ def type_text(text: str) -> str:
     elif _has("ydotool"):
         subprocess.run(["ydotool", "type", text], capture_output=True, timeout=60)
     else:
-        raise InputError("sin backend de entrada")
+        raise _sin_backend("teclear")
     return f"escrito ({len(text)} caracteres)"
 
 
@@ -285,7 +302,7 @@ def press_key(key: str) -> str:
         subprocess.run(["xdotool", "key", key.replace("cmd", "super")],
                        capture_output=True, timeout=10)
     else:
-        raise InputError("sin backend de entrada")
+        raise _sin_backend("teclear")
     return f"tecla {key}"
 
 
@@ -301,7 +318,7 @@ def scroll(amount: int) -> str:
                         f'{"up" if amount > 0 else "down"}'],
                        capture_output=True, timeout=10)
         return f"scroll {amount}"
-    raise InputError("scroll no soportado en esta plataforma")
+    raise _sin_backend("hacer scroll")
 
 
 def input_backend() -> str:

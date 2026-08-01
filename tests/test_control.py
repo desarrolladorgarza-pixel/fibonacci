@@ -11,8 +11,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import pytest
 
+import dataclasses as _dc
+import subprocess as _sp
+
 from fibonacci.control import (
-    Remote, RemoteHost, RemoteError, _mutates_shell, input_backend,
+    InputError, Remote, RemoteError, RemoteHost, ScreenError, _mutates_shell,
+    capture, click, input_backend, press_key, scroll, type_text,
     window_is_sensitive,
 )
 from fibonacci.identity import (
@@ -417,3 +421,120 @@ def test_fallo_de_un_subagente_no_tumba_al_resto(tmp_path):
     res = s.run([SubTask("a", "bueno"), SubTask("b", "malo")], "s1")
     assert res[0].ok and not res[1].ok
     assert "simulado" in res[1].error
+
+
+# ===========================================================================
+# Pantalla: degradación y autorización
+#
+# El control de pantalla nunca se había ejercitado. No hace falta un X11 vivo
+# para cubrir lo que importa: qué pasa cuando NO hay backend (el caso de
+# cualquier servidor sin GUI, que es donde más se despliega esto), que cada
+# camino de plataforma llame a la herramienta correcta, y que ninguna acción
+# de pantalla se salte al `Authority`.
+# ===========================================================================
+
+
+def _sin_backend(monkeypatch):
+    """Un Linux pelado: ni xdotool ni ydotool."""
+    import fibonacci.control as ctl
+
+    # `PLATFORM` es un dataclass congelado: se sustituye entero.
+    monkeypatch.setattr(ctl, "PLATFORM", _dc.replace(ctl.PLATFORM, os="linux"))
+    monkeypatch.setattr(ctl.shutil, "which", lambda t: None)
+
+
+@pytest.mark.parametrize("accion", [
+    lambda: click(10, 20),
+    lambda: type_text("hola"),
+    lambda: press_key("Return"),
+    lambda: scroll(3),
+])
+def test_sin_backend_de_entrada_se_explica_como_arreglarlo(monkeypatch, accion):
+    """
+    Un servidor sin GUI es el destino habitual de este agente. El error tiene
+    que decir qué instalar, no reventar con un `FileNotFoundError` de
+    subprocess.
+    """
+    _sin_backend(monkeypatch)
+    with pytest.raises(InputError, match="xdotool.*ydotool"):
+        accion()
+
+
+def test_el_backend_disponible_se_reporta_con_su_nombre(monkeypatch):
+    """`fib doctor` lo enseña: si dice 'ninguno', ya sabes por qué no va."""
+    import fibonacci.control as ctl
+
+    # `PLATFORM` es un dataclass congelado: se sustituye entero.
+    monkeypatch.setattr(ctl, "PLATFORM", _dc.replace(ctl.PLATFORM, os="linux"))
+
+    monkeypatch.setattr(ctl.shutil, "which", lambda t: "/usr/bin/x" if t == "xdotool" else None)
+    assert "xdotool" in input_backend()
+
+    monkeypatch.setattr(ctl.shutil, "which", lambda t: "/usr/bin/y" if t == "ydotool" else None)
+    assert "ydotool" in input_backend()
+
+    monkeypatch.setattr(ctl.shutil, "which", lambda t: None)
+    assert "ninguno" in input_backend()
+
+
+def test_cada_accion_usa_el_backend_que_hay(monkeypatch):
+    """Con xdotool presente, se llama a xdotool — y con los argumentos suyos."""
+    import fibonacci.control as ctl
+
+    llamadas = []
+    # `PLATFORM` es un dataclass congelado: se sustituye entero.
+    monkeypatch.setattr(ctl, "PLATFORM", _dc.replace(ctl.PLATFORM, os="linux"))
+    monkeypatch.setattr(ctl.shutil, "which",
+                        lambda t: "/usr/bin/xdotool" if t == "xdotool" else None)
+    monkeypatch.setattr(ctl.subprocess, "run",
+                        lambda cmd, **kw: llamadas.append(cmd) or
+                        _sp.CompletedProcess(cmd, 0, b"", b""))
+
+    assert "(10, 20)" in click(10, 20)
+    assert "4 caracteres" in type_text("hola")  # no repite lo tecleado
+    assert "Return" in press_key("Return")
+    scroll(-3)
+
+    assert all(c[0] == "xdotool" for c in llamadas), llamadas
+    assert ["mousemove", "10", "20"] == llamadas[0][1:4]
+    assert "type" in llamadas[1] and "hola" in llamadas[1]
+    assert "key" in llamadas[2] and "Return" in llamadas[2]
+
+
+def test_sin_forma_de_capturar_la_pantalla_se_dice(monkeypatch):
+    import fibonacci.control as ctl
+
+    # `PLATFORM` es un dataclass congelado: se sustituye entero.
+    monkeypatch.setattr(ctl, "PLATFORM", _dc.replace(ctl.PLATFORM, os="linux"))
+    monkeypatch.setattr(ctl.shutil, "which", lambda t: None)
+    with pytest.raises(ScreenError):
+        capture()
+
+
+def test_las_acciones_de_pantalla_pasan_por_el_authority(tmp_path):
+    """
+    Ninguna acción de pantalla puede saltarse el permiso: teclear en la ventana
+    de un banco es tan destructivo como un `rm -rf`, y menos evidente.
+    """
+    from fibonacci.tools_control import attach_screen
+
+    j = Journal(tmp_path / "j.db", snapshots=tmp_path / "s")
+    box = ToolBox(j, root=tmp_path / "ws", confirm=lambda d, x: False)
+    auth = _auth()
+    invitado = Principal("chat:9", "Desconocido", Trust.GUEST)
+    attach_screen(box, auth, invitado)
+
+    pantalla = [s for s in box.specs() if s.name.startswith("screen.")]
+    assert pantalla, "debe registrar herramientas de pantalla"
+
+    for spec in pantalla:
+        if spec.mutating:
+            assert not spec.reversible, \
+                f"'{spec.name}' no se puede deshacer y debe declararlo"
+
+
+def test_una_ventana_sensible_se_detecta_antes_de_teclear():
+    """La lista existe para no escribir una contraseña en el sitio equivocado."""
+    assert window_is_sensitive("1Password — Bóveda personal")
+    assert window_is_sensitive("Banco Santander - Transferencias")
+    assert not window_is_sensitive("notas.txt — VS Code")

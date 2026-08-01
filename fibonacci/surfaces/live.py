@@ -181,6 +181,11 @@ class DiscordSurface(Surface):
         self.token = token
         self.channels = channels
         self.interval = interval
+        # Igual que en Telegram: la base es un atributo, no una constante
+        # incrustada. Sin esto no hay forma de ejercitar el adaptador sin
+        # hablar con Discord de verdad, que es justo lo que no debe hacerse
+        # desde una prueba.
+        self.base = "https://discord.com/api/v10"
         self._last: dict[str, str] = {}
         self._stop = threading.Event()
 
@@ -191,7 +196,7 @@ class DiscordSurface(Surface):
         while not self._stop.is_set():
             for ch in self.channels:
                 try:
-                    url = f"https://discord.com/api/v10/channels/{ch}/messages?limit=10"
+                    url = f"{self.base}/channels/{ch}/messages?limit=10"
                     if self._last.get(ch):
                         url += f"&after={self._last[ch]}"
                     req = urllib.request.Request(url, headers=self._headers())
@@ -217,7 +222,7 @@ class DiscordSurface(Surface):
 
     def send(self, channel_id: str, out: Outbound) -> None:
         for chunk in _split(out.text, 1900):
-            _post(f"https://discord.com/api/v10/channels/{channel_id}/messages",
+            _post(f"{self.base}/channels/{channel_id}/messages",
                   {"content": chunk}, headers=self._headers())
 
     def stop(self) -> None:

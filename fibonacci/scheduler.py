@@ -293,14 +293,33 @@ class Scheduler:
 
     # -- bucle ------------------------------------------------------------
 
-    def serve(self, agent, deliver=None, tick: float = 30.0) -> None:
+    def tick(self, agent, deliver=None) -> list[dict]:
+        """
+        Una pasada: ejecuta lo que toca ahora y devuelve los resultados.
+
+        Es lo que necesita un entorno sin demonios. Termux no tiene systemd y
+        su gestor de batería mata cualquier proceso largo, así que allí la
+        única forma viable es que algo externo —`termux-job-scheduler`, cron,
+        una tarea programada de Windows— invoque una pasada cada N minutos.
+        """
+        resultados = []
+        for job in self.due():
+            log.info("Ejecutando '%s'", job.name)
+            resultados.append(self.execute(job, agent, deliver))
+        return resultados
+
+    def serve(self, agent, deliver=None, tick: float = 30.0,
+              once: bool = False) -> list[dict]:
         """Bucle del demonio. `fib schedule serve`."""
+        if once:
+            return self.tick(agent, deliver)
+
         log.info("Programador activo (%d tareas)", len(self.list(True)))
+        hechos = []
         while not self._stop.is_set():
-            for job in self.due():
-                log.info("Ejecutando '%s'", job.name)
-                self.execute(job, agent, deliver)
+            hechos.extend(self.tick(agent, deliver))
             self._stop.wait(tick)
+        return hechos
 
     def stop(self) -> None:
         self._stop.set()

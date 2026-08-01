@@ -142,12 +142,12 @@ acusen de rebranding.
 | | |
 |---|---|
 | Líneas | 12,946 (8,724 de paquete) |
-| Pruebas | 339 en verde, 36 de aceptación |
-| Cobertura | 76% (`tools_control.py`, `mcp.py`, `surfaces/base.py` en lo más bajo) |
+| Pruebas | 425 en verde (36 de aceptación), 52 s |
+| Cobertura | 80% (`tools_control.py` y `platform.py` en lo más bajo) |
 | Dependencias runtime | ninguna (`cryptography` opcional) |
 | Plataformas | Linux, macOS, Windows, Android/Termux, BSD · x86_64 y arm64 |
-| Verificado a mano | instalación limpia + CLI completo, MCP por stdio, SSH contra un OpenSSH real, Telegram contra una imitación fiel de su API |
-| Sin verificar | **modelo vivo**, Telegram/Discord contra sus servidores, pantalla |
+| Verificado a mano | instalación limpia + CLI completo, MCP por stdio, SSH contra un OpenSSH real, Telegram y Discord contra imitaciones fieles de sus APIs |
+| Sin verificar | **modelo vivo**, Telegram/Discord contra sus servidores, pantalla contra un X11 vivo |
 
 Esa última fila es la razón del orden recomendado en la primera sección. El
 salto de 0.7.0 fue ejercitar el producto instalado en vez de solo la suite:
@@ -155,8 +155,9 @@ apareció que no había forma de instalarlo, que `fib doctor` moría con una
 dependencia opcional rota, y que **el undo remoto decía haber revertido sin
 revertir**. Ninguno lo veía la suite.
 
-Lo que sigue sin tocarse es un LLM de verdad. Todo el camino del modelo se ha
-probado contra endpoints que hablan el protocolo OpenAI, y eso valida la
-plomería, no el comportamiento: JSON mal formado, tool calls inventadas,
-prosa alrededor del JSON y negativas del modelo son cosas que solo aparecen
-con un modelo vivo.
+Lo que sigue sin tocarse es un LLM de verdad. `tests/test_modelo_adverso.py`
+cubre ya la *clase* de fallo que provoca —JSON envuelto en prosa, tool calls
+inventadas, argumentos del tipo equivocado, respuestas cortadas— y encontró
+cuatro formas de tumbar el agente desde el modelo. Pero cubrir las
+malformaciones conocidas no es lo mismo que ver cómo se comporta un modelo
+real resolviendo una tarea de varios pasos.

@@ -35,4 +35,7 @@ termux-job-scheduler --script ~/bin/fib-tick.sh --period-ms 900000
 
 donde `fib-tick.sh` es `#!/data/data/com.termux/files/usr/bin/bash` + `fib schedule serve --once`.
 
-> Nota: `--once` aún no existe. Es una de las tareas abiertas en `CODEX.md`.
+`--once` ejecuta lo que toque en ese momento y sale. Devuelve 0 si todo fue
+bien y 1 si alguna tarea falló, así que el planificador que lo invoca puede
+distinguirlo. Sirve igual para `cron` y para el Programador de tareas de
+Windows.

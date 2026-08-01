@@ -10,9 +10,10 @@ Todo lo de esta sección salió de ejercitar código que "se veía bien" para
 pasar la compuerta. Es la quinta vez que ocurre en este proyecto; ver
 `CODEX.md` §5.
 
-Los ocho primeros salieron de algo distinto a las pruebas: **instalar el
-paquete y usar el producto** —binario `fib`, HOME limpio— y **operar un
-servidor SSH real**. Ninguno era visible desde la suite.
+La mayoría no salió de escribir pruebas, sino de **usar el producto**:
+instalarlo desde el paquete y manejarlo con el binario `fib`, operar un
+servidor SSH real, y disparar contra el agente las malformaciones que produce
+un modelo de verdad. Ninguno de esos era visible desde la suite.
 
 - **El undo remoto mentía.** `fib undo` sobre un `remote.write` respondía OK,
   el journal marcaba la acción como revertida… y el archivo del servidor
@@ -54,13 +55,36 @@ servidor SSH real**. Ninguno era visible desde la suite.
   la cuenta era correcta y la lista mentía. En un producto cuyo argumento es
   que sabes qué puede hacer el agente, ese es de los peores sitios donde
   mentir.
-- **`fib scope add /etc/** libre` respondía "✓".** El bloqueo de núcleo seguía
+- **`fib scope add "/etc/**" libre` respondía con un ✓.** El bloqueo de núcleo seguía
   ganando —la garantía nunca estuvo rota— pero la salida daba a entender lo
   contrario, y quien la creyera se quedaría pensando que acaba de abrir
   `/etc`. Ahora avisa de que sigue bloqueado y por qué.
 - **`fib sync import` con la contraseña mal escribía una traza de excepción.**
   Teclearla mal es el camino habitual, no el raro.
 
+- **Cuatro formas de tumbar el agente desde el modelo.** La salida de un LLM
+  es entrada NO confiable, y se trataba como si siempre viniera bien formada:
+  `content` que no es texto, `arguments` que no son un objeto (`"notas.txt"` o
+  `[1,2,3]` donde iba un dict), un `function` que es una cadena y no un
+  objeto — cada uno de esos producía un `AttributeError` que salía de
+  `agent.chat()` y se llevaba el turno entero. Con un modelo local pequeño
+  esto no es hipotético: es el martes. La normalización vive ahora en el
+  proveedor, que es la frontera donde la respuesta del modelo se vuelve un
+  objeto tipado, y hay 44 pruebas que disparan malformaciones reales contra
+  el agente (`tests/test_modelo_adverso.py`).
+- **Tres mensajes distintos para "no hay backend de pantalla", dos sin
+  arreglo.** `click` decía qué instalar, `type_text` soltaba un escueto "sin
+  backend de entrada" y `scroll` culpaba a la plataforma —"no soportado en
+  esta plataforma"— cuando lo único que faltaba era `xdotool`. En un servidor
+  sin GUI, que es donde más se despliega esto, el usuario concluía que su
+  sistema no podía en vez de instalar un paquete.
+- **El contrato de extensión publicado no servía.** `surfaces/base.py`
+  documenta cómo escribir una superficie nueva —el README lo vende como "un
+  archivo, no un parche al gateway"— y declaraba sus propios
+  `Inbound`/`Outbound`/`Surface`, distintos de los que usa el runtime y sin el
+  campo `display` que `SurfaceRunner` lee. Nadie lo importaba: era código
+  muerto y, peor, una trampa para quien siguiera la documentación. Ahora
+  re-exporta las definiciones de verdad.
 - **`fib` moría con un mensaje directo de más de dos palabras.** El positional
   `message` y los subparsers competían por los mismos tokens y argparse los
   repartía: `fib arregla mis descargas` le daba dos palabras a `message` y
@@ -133,6 +157,19 @@ servidor SSH real**. Ninguno era visible desde la suite.
   camino semántico de la memoria. Ahora el vector se compone por palabra.
 
 ### Añadido
+- **`fib schedule serve --once`**: una pasada y salir, con código de salida
+  distinto si alguna tarea falló. `deploy/README.md` la documentaba desde hacía
+  versiones con la nota "aún no existe": Termux no tiene systemd y su gestor de
+  batería mata los procesos largos, así que allí un demonio no es una opción.
+  Sirve igual para `cron` y para el Programador de tareas de Windows.
+- **Discord, verificado contra una imitación de su API REST**
+  (`tests/discord_fake.py`): que ignore a los bots —incluido él mismo, o se
+  responde en bucle gastando presupuesto—, que procese del más viejo al más
+  nuevo (la API los devuelve al revés), que avance `after` y que parta por
+  debajo del tope de 2000.
+- **Servidor MCP**: de 29% a 99% de cobertura. Protocolo, las cuatro
+  herramientas, el ida y vuelta `do`→`undo` que es la afirmación distintiva
+  del README, y que ninguna llamada mal formada del host tumbe el servidor.
 - **Telegram, verificado contra una imitación fiel de su Bot API**
   (`tests/telegram_fake.py`). `TelegramSurface` nunca había hablado con nada,
   y el README lo ofrece como forma de usar el agente desde el teléfono. Se
@@ -162,6 +199,11 @@ servidor SSH real**. Ninguno era visible desde la suite.
   los `awesome-*`, con lo que **no** hay que hacer.
 
 ### Cambiado
+- **La suite tarda la mitad.** 425 pruebas en 52 s, frente a 279 en 59 s. Los
+  servidores de prueba se apagaban con el `poll_interval` por omisión de
+  `serve_forever`, medio segundo que se pagaba en cada prueba que levantara
+  uno: 48 de los 101 segundos que llegó a tardar la suite se iban en esperar
+  a nada.
 - **`preflight.sh` es estricto por defecto.** Publicar es la operación
   irreversible del proyecto: el default debe ser el seguro. `--laxo` queda para
   desarrollo local.

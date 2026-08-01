@@ -17,6 +17,7 @@ código real. Ningún caso sale a la red.
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 
@@ -459,6 +460,55 @@ def test_schedule_remove(cli, capsys):
 
     cli.main(["schedule", "list"])
     assert "efimera" not in _salida(capsys)
+
+
+class _AgenteProgramado:
+    """Lo mínimo que `Scheduler.execute` necesita."""
+
+    def __init__(self):
+        self.tools = type("_T", (), {"confirm": None})()
+        self.budget = type("_B", (), {"max_usd": 1.0})()
+        self.vistos = []
+
+    def chat(self, texto, session, **kw):
+        from fibonacci.agent import AgentReply
+
+        self.vistos.append(texto)
+        return AgentReply(text="hecho", cost_usd=0.0, model="falso")
+
+
+def test_schedule_serve_once_sin_nada_pendiente(cli, capsys, monkeypatch):
+    """Una pasada y salir: lo que necesita Termux, que mata procesos largos."""
+    monkeypatch.setattr(cli, "_boot",
+                        lambda cfg, vault_pass=None: _AgenteProgramado())
+    cli.main(["schedule", "add", "diaria", "haz algo", "diario 07:00"])
+    capsys.readouterr()
+
+    assert cli.main(["schedule", "serve", "--once"]) == 0
+    assert "Nada pendiente" in _salida(capsys)
+
+
+def test_schedule_serve_once_ejecuta_lo_vencido_y_sale(cli, capsys, monkeypatch):
+    from fibonacci.scheduler import Scheduler
+
+    agente = _AgenteProgramado()
+    monkeypatch.setattr(cli, "_boot", lambda cfg, vault_pass=None: agente)
+    cli.main(["schedule", "add", "cada-hora", "revisa los PRs", "cada 1h"])
+    capsys.readouterr()
+
+    # La tarea vence dentro de una hora: la adelantamos.
+    sch = Scheduler()
+    job = sch.get("cada-hora")
+    sch.store.write("UPDATE jobs SET next_run=? WHERE id=?",
+                    (time.time() - 5, job.id))
+
+    assert cli.main(["schedule", "serve", "--once"]) == 0
+    assert "cada-hora" in _salida(capsys)
+    assert agente.vistos == ["revisa los PRs"], "debió ejecutarla una sola vez"
+
+    # Y no se queda dando vueltas: la siguiente pasada ya no tiene nada.
+    assert cli.main(["schedule", "serve", "--once"]) == 0
+    assert "Nada pendiente" in _salida(capsys)
 
 
 def test_schedule_history_de_una_tarea_desconocida_devuelve_1(cli, capsys):

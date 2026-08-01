@@ -122,9 +122,8 @@ un servidor falso.
 
 ## 4. Funcionalidad pendiente (solo si sobra tiempo)
 
-- [ ] `fib schedule serve --once` — una pasada y salir. Lo necesita Termux,
-      que no tiene systemd y mata procesos largos. Está referenciado en
-      `deploy/README.md` como no implementado.
+- [x] `fib schedule serve --once` — hecho en 0.7.0. Una pasada y salir, con
+      código de salida distinto si alguna tarea falló.
 - [ ] Snapshots incrementales: hoy `Journal.snapshot_file` copia el archivo
       entero en cada escritura. Un archivo de 30 MB editado 20 veces son
       600 MB. Guardar diffs cuando el archivo es texto.
