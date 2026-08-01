@@ -11,7 +11,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with: { python-version: "${{ matrix.python }}" }
       - run: pip install -e ".[dev,crypto]"
@@ -24,7 +24,7 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -e ".[dev,crypto]"
@@ -35,7 +35,7 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install ruff
@@ -47,7 +47,7 @@ jobs:
     # Si algo se cuelga, que falle en 20 minutos y no consuma el tope de 6h.
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -e ".[dev,crypto]"
