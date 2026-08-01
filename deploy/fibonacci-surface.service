@@ -1,0 +1,24 @@
+# Superficie de mensajería.
+#   sudo systemctl enable --now fibonacci-surface@$USER
+# El token va en un EnvironmentFile con permisos 600, nunca en la unidad.
+[Unit]
+Description=Fibonacci — superficie de mensajería
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=%h
+EnvironmentFile=%h/.config/fibonacci/surface.env
+ExecStart=%h/.local/bin/fib serve telegram
+Restart=on-failure
+RestartSec=30
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/fibonacci %h/.config/fibonacci %h/fibonacci
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

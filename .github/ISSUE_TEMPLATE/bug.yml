@@ -1,0 +1,46 @@
+name: Reportar un bug
+description: Algo no funciona como debería
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Si el bug tiene implicaciones de seguridad, no lo reportes aquí.**
+        Ver `SECURITY.md`.
+  - type: textarea
+    id: que-paso
+    attributes:
+      label: Qué pasó
+      description: Y qué esperabas que pasara.
+    validations: { required: true }
+  - type: textarea
+    id: reproducir
+    attributes:
+      label: Cómo reproducirlo
+      placeholder: |
+        1. fib config mode local
+        2. fib "..."
+        3. ...
+    validations: { required: true }
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Salida de `fib doctor`
+      description: >-
+        Revisa que no incluya nada sensible antes de pegarlo.
+      render: shell
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes:
+      label: Versión
+      placeholder: "0.6.1"
+    validations: { required: true }
+  - type: dropdown
+    id: reversible
+    attributes:
+      label: ¿El bug involucró una acción no reversible?
+      description: >-
+        Si el agente hizo algo que no pudiste deshacer, es prioritario.
+      options: ["No", "Sí — el undo falló", "Sí — no había undo disponible"]
+    validations: { required: true }

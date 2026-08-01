@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+title: "Fibonacci: el agente que puedes deshacer"
+message: "Si usas este software en tu trabajo, por favor cítalo."
+type: software
+authors:
+  - name: "Chronoshg"
+repository-code: "https://github.com/desarrolladorgarza-pixel/fibonacci"
+license: MIT
+version: 0.7.0
+date-released: "2026-08-01"
+keywords:
+  - ai-agent
+  - autonomous-agents
+  - reversible-computing
+  - local-llm
+  - prompt-injection
+abstract: >-
+  Agente personal de propósito general cuya premisa central es la
+  reversibilidad: cada mutación se registra junto con su operación inversa
+  antes de aplicarse, con verificación de integridad que impide revertir sobre
+  trabajo más nuevo. Incluye memoria con decaimiento temporal y detección de
+  contradicciones, skills con promoción por evidencia medida, mitigación de
+  inyección de prompt por control de flujo de salida, y soporte multiplataforma
+  sin dependencias externas.

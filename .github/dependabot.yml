@@ -1,0 +1,12 @@
+version: 2
+updates:
+  # El paquete no tiene dependencias en runtime, pero las acciones de CI sí
+  # se quedan atrás y son superficie de ataque en la cadena de suministro.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule: { interval: "monthly" }
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule: { interval: "monthly" }
+    allow:
+      - dependency-type: "development"

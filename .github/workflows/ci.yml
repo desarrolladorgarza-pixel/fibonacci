@@ -1,0 +1,56 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ matrix.python }}" }
+      - run: pip install -e ".[dev,crypto]"
+      - run: pytest tests/ -q
+      # El agente debe arrancar sin ningun modelo vivo: doctor reporta, no explota.
+      - run: fib doctor
+        continue-on-error: true
+      - run: fib config
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[dev,crypto]"
+      - run: pytest tests/ --cov=fibonacci --cov-report=term-missing --cov-fail-under=60
+      - name: Modulos sin cobertura
+        run: pytest tests/ --cov=fibonacci --cov-report=term | sort -k4 -n | head -20
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install ruff
+      - run: ruff check fibonacci/ tests/
+
+  sin-red:
+    # Verifica la promesa: ninguna prueba debe salir a internet.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[dev,crypto]"
+      - name: Bloquear salida externa y correr pruebas
+        run: |
+          sudo iptables -A OUTPUT -o lo -j ACCEPT
+          sudo iptables -A OUTPUT -d 127.0.0.0/8 -j ACCEPT
+          sudo iptables -A OUTPUT -j REJECT
+          pytest tests/ -q

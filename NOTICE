@@ -1,0 +1,10 @@
+FIBONACCI
+Copyright (c) 2026 Chronoshg
+
+Implementación independiente inspirada en los patrones de diseño de
+Hermes Agent (https://github.com/NousResearch/hermes-agent),
+Copyright (c) Nous Research, licenciado bajo MIT.
+
+Fibonacci NO contiene código fuente de Hermes Agent. Los patrones adoptados
+—loop de aprendizaje cerrado, skills como memoria procedural, proveedores de
+modelo intercambiables— son ideas de arquitectura, no código copiado.

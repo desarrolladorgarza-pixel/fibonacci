@@ -1,0 +1,30 @@
+name: Proponer una funcionalidad
+description: Una idea para Fibonacci
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problema
+    attributes:
+      label: Qué problema resuelve
+      description: >-
+        Empieza por el problema, no por la solución. Ayuda a encontrar
+        alternativas que quizá no consideraste.
+    validations: { required: true }
+  - type: textarea
+    id: propuesta
+    attributes:
+      label: Cómo lo resolverías
+    validations: { required: true }
+  - type: dropdown
+    id: muta
+    attributes:
+      label: ¿Implica una herramienta que modifique el mundo?
+      description: >-
+        Si sí, ¿cómo se deshace? Es requisito de diseño, no un detalle.
+      options: ["No muta nada", "Muta y es reversible", "Muta y es irreversible"]
+    validations: { required: true }
+  - type: input
+    id: dependencias
+    attributes:
+      label: ¿Requiere alguna dependencia externa?
+      placeholder: "ninguna"

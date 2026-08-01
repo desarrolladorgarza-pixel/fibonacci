@@ -1,0 +1,7 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Vulnerabilidad de seguridad
+    url: https://github.com/desarrolladorgarza-pixel/fibonacci/blob/main/SECURITY.md
+    about: >-
+      No abras un issue público con detalles explotables. Fibonacci controla
+      máquinas reales; sigue el proceso de SECURITY.md.
