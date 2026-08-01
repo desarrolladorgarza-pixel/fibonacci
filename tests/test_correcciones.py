@@ -50,7 +50,7 @@ def test_undo_se_niega_si_el_archivo_cambio_despues(tmp_path):
     ok, msg = j.undo_last("s1")
     assert not ok, "debió negarse a revertir"
     assert "modificado" in msg
-    assert (ws / "doc.txt").read_text() == "MI EDICIÓN IMPORTANTE"
+    assert (ws / "doc.txt").read_text(encoding="utf-8") == "MI EDICIÓN IMPORTANTE"
 
 
 def test_undo_forzado_procede_tras_avisar(tmp_path):
@@ -62,7 +62,7 @@ def test_undo_forzado_procede_tras_avisar(tmp_path):
 
     ok, msg = j.undo_last("s1", force=True)
     assert ok and "forzado" in msg
-    assert (ws / "doc.txt").read_text() == "original"
+    assert (ws / "doc.txt").read_text(encoding="utf-8") == "original"
 
 
 def test_undo_normal_sigue_funcionando_sin_interferencia(tmp_path):
@@ -71,7 +71,7 @@ def test_undo_normal_sigue_funcionando_sin_interferencia(tmp_path):
     (ws / "doc.txt").write_text("v1", encoding="utf-8")
     box.invoke("file.write", {"path": "doc.txt", "content": "v2"}, "s1")
     ok, _ = j.undo_last("s1")
-    assert ok and (ws / "doc.txt").read_text() == "v1"
+    assert ok and (ws / "doc.txt").read_text(encoding="utf-8") == "v1"
 
 
 def test_undo_detecta_archivo_borrado_por_el_usuario(tmp_path):
@@ -99,7 +99,7 @@ def test_undo_de_sesion_se_detiene_ante_conflicto(tmp_path):
 def test_hash_distingue_inexistencia(tmp_path):
     assert file_hash(tmp_path / "no_existe") == MISSING
     p = tmp_path / "x.txt"
-    p.write_text("hola")
+    p.write_text("hola", encoding="utf-8")
     assert file_hash(p) not in (MISSING, "")
     assert file_hash(p) == file_hash(p)
 

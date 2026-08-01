@@ -39,6 +39,24 @@ pasar la compuerta. Es la quinta vez que ocurre en este proyecto; ver
   nivel de módulo lo habría apuntado al home real del usuario. La ruta se
   resuelve ahora al usarla —como ya hacían `hosts.json` y `apis.json`— y
   `conftest.py` parchea también `cli`, `mcp` y `subagents`.
+- **Windows corrompía todo texto no ASCII fuera del área de trabajo.**
+  `config.json`, `hosts.json`, `apis.json`, los metadatos de la forja, la
+  identidad y el id de dispositivo se leían y escribían sin declarar
+  codificación, así que en Windows salían en cp1252. En un proyecto cuyos
+  datos son español —notas, nombres, ámbitos— eso significa acentos rotos o
+  un `UnicodeEncodeError` al guardar. `tools.py` y la bóveda ya lo hacían
+  bien; ahora lo hace todo. Lo destapó el CI: las tres versiones de Python
+  sobre `windows-latest` fallaban.
+- **La compuerta de estilo no daba la misma respuesta dos veces.** El
+  conjunto de reglas quedaba al criterio de la versión de ruff instalada:
+  `preflight.sh` decía "ruff limpio" en local mientras el CI, que instala
+  siempre la última, reportaba 121 errores del mismo árbol. Las reglas se
+  declaran ahora explícitamente en `pyproject.toml`.
+- **Una prueba del programador fallaba en Windows por resolución de reloj.**
+  Comparaba dos marcas de tiempo tomadas con microsegundos de diferencia con
+  `>`; el reloj de Windows avanza a saltos de ~15 ms, así que caían en el
+  mismo tick. Ahora afirma lo que "cada 1h" promete de verdad: que la próxima
+  ejecución no retrocede y queda ~1h por delante.
 - **El modelo falso incumplía su propio contrato.** `_pseudo_vector`
   prometía que "textos parecidos quedan cerca" pero hasheaba el texto
   completo: dos frases con casi todo el vocabulario en común salían tan

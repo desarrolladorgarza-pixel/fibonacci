@@ -41,11 +41,11 @@ def test_promesa_undo_revierte_lo_que_hizo_el_agente(agent, fake_model, workspac
     fake_model.reply("Listo")
     fake_model.reply_json({"notes": [], "skill": None})
     agent.chat("cambia config.yml", "s1")
-    assert (workspace / "config.yml").read_text() == "cambiado"
+    assert (workspace / "config.yml").read_text(encoding="utf-8") == "cambiado"
 
     ok, _ = agent.journal.undo_last("s1")
     assert ok
-    assert (workspace / "config.yml").read_text() == "original"
+    assert (workspace / "config.yml").read_text(encoding="utf-8") == "original"
 
 
 def test_promesa_undo_all_revierte_la_sesion_completa(agent, fake_model, workspace):
@@ -65,7 +65,7 @@ def test_promesa_undo_all_revierte_la_sesion_completa(agent, fake_model, workspa
 
     n, _ = agent.journal.undo_session("s1")
     assert n == 3
-    assert (workspace / "a.txt").read_text() == "A0"
+    assert (workspace / "a.txt").read_text(encoding="utf-8") == "A0"
     assert not (workspace / "b.txt").exists()
     assert not (workspace / "c.txt").exists()
 
@@ -87,7 +87,7 @@ def test_promesa_undo_no_destruye_trabajo_mas_nuevo(agent, fake_model, workspace
     ok, msg = agent.journal.undo_last("s1")
     assert not ok
     assert "modificado" in msg
-    assert (workspace / "doc.md").read_text() == "MI EDICIÓN"
+    assert (workspace / "doc.md").read_text(encoding="utf-8") == "MI EDICIÓN"
 
 
 def test_promesa_herramienta_mutante_sin_undo_no_se_registra(toolbox):
@@ -336,7 +336,7 @@ def test_promesa_cero_dependencias_en_runtime():
     import pathlib
     import tomllib
 
-    d = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+    d = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))
     assert d["project"]["dependencies"] == []
 
 
@@ -465,7 +465,7 @@ def test_promesa_el_servidor_mcp_generado_funciona(tmp_path):
                                "properties": {"texto": {"type": "string"}},
                                "required": ["texto"]}, status="tested")
     server = forge.build_mcp_server("acc", [t])
-    ast.parse(server.read_text())
+    ast.parse(server.read_text(encoding="utf-8"))
 
     proc = subprocess.Popen([sys.executable, str(server)],
                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
@@ -510,5 +510,5 @@ def test_promesa_instalar_expone_el_comando_fib():
     import pathlib
     import tomllib
 
-    d = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+    d = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))
     assert "fib" in d["project"]["scripts"]

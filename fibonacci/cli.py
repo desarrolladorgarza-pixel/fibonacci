@@ -51,14 +51,14 @@ def load_config() -> dict:
     f = config_file()
     if f.exists():
         try:
-            cfg.update(json.loads(f.read_text()))
+            cfg.update(json.loads(f.read_text(encoding="utf-8")))
         except json.JSONDecodeError:
             pass
     return cfg
 
 
 def save_config(cfg: dict) -> None:
-    config_file().write_text(json.dumps(cfg, indent=2))
+    config_file().write_text(json.dumps(cfg, indent=2), encoding="utf-8")
 
 
 def _boot(cfg: dict, vault_pass: str | None = None):
@@ -77,7 +77,7 @@ def _load_apis(agent, vault_pass: str | None) -> None:
     if not f.exists() or vault_pass is None:
         return
     try:
-        apis = _j.loads(f.read_text())
+        apis = _j.loads(f.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return
     from .api import OpenApiSpec
@@ -483,7 +483,7 @@ def cmd_host(args) -> int:
 
     import json as _j
     f = config_dir() / "hosts.json"
-    hosts = _j.loads(f.read_text()) if f.exists() else {}
+    hosts = _j.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
 
     if args.action == "list":
         if not hosts:
@@ -496,7 +496,7 @@ def cmd_host(args) -> int:
         hosts[args.alias] = {"host": args.host, "user": args.user or "",
                              "port": args.port, "key_file": args.key or "",
                              "scope": args.scope, "note": args.note or ""}
-        f.write_text(_j.dumps(hosts, indent=2))
+        f.write_text(_j.dumps(hosts, indent=2), encoding="utf-8")
         print(c(f"  ✓ {args.alias} añadido con ámbito '{args.scope}'", "32"))
         if args.scope == "free":
             print(c("  ⚠ ámbito 'free': el agente operará ahí sin preguntar", "33"))
@@ -567,7 +567,7 @@ def cmd_forge(args) -> int:
         for td in forge.list_tools():
             if td["status"] in ("tested", "active"):
                 code = (forge.dir / ("active" if td["status"] == "active"
-                        else "quarantine") / f"{td['name']}.py").read_text()
+                        else "quarantine") / f"{td['name']}.py").read_text(encoding="utf-8")
                 tools.append(FT(name=td["name"], description=td["description"],
                                 code=code, parameters=td["parameters"],
                                 status=td["status"]))
@@ -828,18 +828,18 @@ def cmd_api(args) -> int:
         # Persistir para que se cargue en cada arranque
         import json as _j
         f = config_dir() / "apis.json"
-        apis = _j.loads(f.read_text()) if f.exists() else {}
+        apis = _j.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
         apis[args.prefix or spec.title] = {
             "spec": args.spec, "credential": args.credential or "",
             "prefix": args.prefix or "", "readonly": bool(args.readonly)}
-        f.write_text(_j.dumps(apis, indent=2))
+        f.write_text(_j.dumps(apis, indent=2), encoding="utf-8")
         print(c("    guardada: se cargará en los próximos arranques", "90"))
         return 0
 
     if args.action == "list":
         import json as _j
         f = config_dir() / "apis.json"
-        apis = _j.loads(f.read_text()) if f.exists() else {}
+        apis = _j.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
         if not apis:
             print("  Sin APIs. Añade una:")
             print(c("    fib api add https://api.ejemplo.com/openapi.json "

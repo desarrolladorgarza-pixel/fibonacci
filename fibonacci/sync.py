@@ -79,11 +79,11 @@ def device_id() -> str:
     """Identificador estable del dispositivo. Persistente entre arranques."""
     f = data_dir() / "device_id"
     if f.exists():
-        return f.read_text().strip()
+        return f.read_text(encoding="utf-8").strip()
     import uuid
 
     did = f"{PLATFORM.os}-{uuid.uuid4().hex[:8]}"
-    f.write_text(did)
+    f.write_text(did, encoding="utf-8")
     return did
 
 

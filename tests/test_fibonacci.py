@@ -34,11 +34,11 @@ def test_undo_restaura_contenido_previo(tmp_path):
     (ws / "notas.txt").write_text("versión original", encoding="utf-8")
 
     box.invoke("file.write", {"path": "notas.txt", "content": "pisado"}, "s1")
-    assert (ws / "notas.txt").read_text() == "pisado"
+    assert (ws / "notas.txt").read_text(encoding="utf-8") == "pisado"
 
     ok, msg = j.undo_last("s1")
     assert ok, msg
-    assert (ws / "notas.txt").read_text() == "versión original"
+    assert (ws / "notas.txt").read_text(encoding="utf-8") == "versión original"
 
 
 def test_undo_de_archivo_nuevo_lo_elimina(tmp_path):
@@ -59,7 +59,7 @@ def test_undo_de_borrado_recupera_el_archivo(tmp_path):
 
     ok, _ = j.undo_last("s1")
     assert ok
-    assert (tmp_path / "ws/importante.txt").read_text() == "no me borres"
+    assert (tmp_path / "ws/importante.txt").read_text(encoding="utf-8") == "no me borres"
 
 
 def test_undo_de_sesion_revierte_en_orden_inverso(tmp_path):
@@ -74,7 +74,7 @@ def test_undo_de_sesion_revierte_en_orden_inverso(tmp_path):
 
     n, _ = j.undo_session("s1")
     assert n == 3
-    assert (ws / "a.txt").read_text() == "A0"
+    assert (ws / "a.txt").read_text(encoding="utf-8") == "A0"
     assert not (ws / "b.txt").exists() and not (ws / "c.txt").exists()
 
 

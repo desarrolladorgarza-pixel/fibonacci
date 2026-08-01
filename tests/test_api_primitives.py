@@ -36,7 +36,7 @@ def _vault(tmp):
 def test_credencial_se_guarda_cifrada(tmp_path):
     v = _vault(tmp_path)
     v.put(Credential(name="gh", kind="bearer", secret="TOKEN-SECRETO-123"))
-    crudo = (tmp_path / "v.enc").read_text()
+    crudo = (tmp_path / "v.enc").read_text(encoding="utf-8")
     assert "TOKEN-SECRETO-123" not in crudo, "el secreto no debe estar en claro"
 
 
@@ -433,7 +433,7 @@ def test_checkpoint_y_rollback_real(tmp_path):
 
     hechas, _ = cp.rollback()
     assert hechas == 2
-    assert (ws / "a.txt").read_text() == "original"
+    assert (ws / "a.txt").read_text(encoding="utf-8") == "original"
     assert not (ws / "b.txt").exists()
 
 

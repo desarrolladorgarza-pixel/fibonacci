@@ -133,7 +133,9 @@ def test_forjada_mutante_con_undo_se_registra(tmp_path):
     t = ForgedTool(
         name="marca", description="crea marcador",
         code=("from pathlib import Path\n"
-              "def run(path):\n    Path(path).write_text('x'); return 'ok'\n\n"
+              "def run(path):\n"
+              "    Path(path).write_text('x', encoding='utf-8')\n"
+              "    return 'ok'\n\n"
               "def undo(args):\n    from pathlib import Path\n"
               "    Path(args['path']).unlink(missing_ok=True); return 'borrado'"),
         parameters={"type": "object", "properties": {"path": {"type": "string"}},
@@ -175,7 +177,7 @@ def test_servidor_mcp_generado_es_valido_y_responde(tmp_path):
                                 "required": ["texto"]}, status="tested")
 
     server = f.build_mcp_server("utils", [t1, t2])
-    ast.parse(server.read_text())          # compila
+    ast.parse(server.read_text(encoding="utf-8"))          # compila
 
     proc = subprocess.Popen([sys.executable, str(server)],
                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)

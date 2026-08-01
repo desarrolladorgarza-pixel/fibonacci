@@ -179,7 +179,13 @@ def test_ejecucion_registra_y_reprograma(tmp_path):
     r = s.execute(j, _Agent())
     assert r["ok"]
     despues = s.get("j")
-    assert despues.runs == 1 and despues.next_run > antes
+    assert despues.runs == 1
+    # No se compara con `>` a secas: `antes` y la reprogramación se toman con
+    # microsegundos de diferencia, y el reloj de Windows avanza a saltos de
+    # ~15 ms, así que ambos caían en el mismo tick y la prueba fallaba sin que
+    # nada estuviera mal. Lo que de verdad promete "cada 1h" es esto:
+    assert despues.next_run >= antes, "la próxima ejecución nunca retrocede"
+    assert abs(despues.next_run - (time.time() + 3600)) < 5, "reprogramada ~1h"
     assert len(s.history(j.id)) == 1
 
 

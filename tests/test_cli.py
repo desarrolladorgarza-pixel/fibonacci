@@ -82,7 +82,7 @@ def test_config_no_escribe_fuera_del_directorio_aislado(cli, isolate):
     cli.main(["config", "session", "trabajo"])
     destino = isolate["config"] / "config.json"
     assert destino.exists()
-    assert json.loads(destino.read_text())["session"] == "trabajo"
+    assert json.loads(destino.read_text(encoding="utf-8"))["session"] == "trabajo"
 
 
 def test_config_corrupto_no_tumba_el_cli(cli, isolate, capsys):
@@ -295,10 +295,10 @@ def test_undo_revierte_la_ultima_escritura(cli, capsys, isolate):
     j = Journal()
     box = ToolBox(j, root=ws, confirm=lambda d, x: True)
     box.invoke("file.write", {"path": "doc.md", "content": "v2"}, "principal")
-    assert (ws / "doc.md").read_text() == "v2"
+    assert (ws / "doc.md").read_text(encoding="utf-8") == "v2"
 
     assert cli.main(["undo"]) == 0
-    assert (ws / "doc.md").read_text() == "v1"
+    assert (ws / "doc.md").read_text(encoding="utf-8") == "v1"
 
 
 def test_undo_all_revierte_la_sesion_completa(cli, capsys, isolate):
@@ -330,7 +330,7 @@ def test_undo_se_niega_si_el_archivo_cambio_despues(cli, capsys, isolate):
     (ws / "doc.md").write_text("editado a mano", encoding="utf-8")
 
     assert cli.main(["undo"]) == 1
-    assert (ws / "doc.md").read_text() == "editado a mano"
+    assert (ws / "doc.md").read_text(encoding="utf-8") == "editado a mano"
     assert "--force" in _salida(capsys)
 
 
@@ -347,7 +347,7 @@ def test_undo_force_procede_pese_al_cambio(cli, isolate):
     (ws / "doc.md").write_text("editado a mano", encoding="utf-8")
 
     assert cli.main(["undo", "--force"]) == 0
-    assert (ws / "doc.md").read_text() == "original"
+    assert (ws / "doc.md").read_text(encoding="utf-8") == "original"
 
 
 def test_undo_de_una_accion_concreta_por_id(cli, capsys, isolate):
@@ -553,7 +553,7 @@ def test_host_add_persiste_y_avisa_del_ambito_libre(cli, capsys, isolate):
     assert "añadido" in salida
     assert "sin preguntar" in salida, "un ámbito 'free' debe advertirse"
 
-    guardado = json.loads((isolate["config"] / "hosts.json").read_text())
+    guardado = json.loads((isolate["config"] / "hosts.json").read_text(encoding="utf-8"))
     assert guardado["prod"]["host"] == "prod.ejemplo.com"
 
     assert cli.main(["host", "list"]) == 0
@@ -601,7 +601,7 @@ def test_api_add_registra_la_spec_para_los_proximos_arranques(cli, capsys,
                      "--readonly"]) == 0
     assert "herramientas" in _salida(capsys)
 
-    guardado = json.loads((isolate["config"] / "apis.json").read_text())
+    guardado = json.loads((isolate["config"] / "apis.json").read_text(encoding="utf-8"))
     assert guardado["mini"]["readonly"] is True
 
     assert cli.main(["api", "list"]) == 0

@@ -68,6 +68,21 @@ include = ["fibonacci*"]
 [tool.ruff]
 line-length = 100
 
+[tool.ruff.lint]
+# El conjunto de reglas se declara explícitamente a propósito.
+#
+# Antes se dejaba al criterio de ruff, y eso hacía que la compuerta dependiera
+# de qué versión tuviera instalada quien la corriera: `preflight.sh` decía
+# "ruff limpio" en local mientras CI —que instala siempre la última— reportaba
+# 121 errores del mismo árbol, porque entre una versión y otra el conjunto por
+# omisión creció. Una compuerta que no da la misma respuesta dos veces no es
+# una compuerta.
+#
+# Estas son las reglas que el proyecto ha exigido siempre (el antiguo conjunto
+# por omisión). Ampliarlo es una decisión deliberada, no algo que deba pasar
+# solo al actualizar una dependencia.
+select = ["E4", "E7", "E9", "F", "W"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q --strict-markers"

@@ -377,7 +377,7 @@ class Forge:
         out = []
         for where in ("quarantine", "active"):
             for jf in (self.dir / where).glob("*.json"):
-                data = json.loads(jf.read_text())
+                data = json.loads(jf.read_text(encoding="utf-8"))
                 if status is None or data["status"] == status:
                     out.append(data)
         return out
