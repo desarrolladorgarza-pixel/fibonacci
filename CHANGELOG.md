@@ -10,6 +10,40 @@ Todo lo de esta sección salió de ejercitar código que "se veía bien" para
 pasar la compuerta. Es la quinta vez que ocurre en este proyecto; ver
 `CODEX.md` §5.
 
+Los seis primeros salieron de algo distinto a las pruebas: **instalar el
+paquete y usar el producto**, con el binario `fib` y un HOME limpio, contra un
+endpoint HTTP que habla el protocolo OpenAI. Ninguno era visible desde la
+suite, y cuatro de ellos le pasan a todo el que instale.
+
+- **No había forma de instalarlo.** `pip install fibonacci-agent` —la primera
+  línea del README y lo que ejecutan `install.sh` e `install.ps1`— falla: el
+  nombre no está publicado en PyPI. Los instaladores intentan PyPI primero y
+  caen al repo de GitHub si no está, así que funcionan antes y después de
+  publicar; el README dice cuál es la situación real.
+- **`fib doctor` moría con una traza de Rust si `cryptography` estaba rota.**
+  Es una dependencia *opcional*, pero `aes_available()` solo capturaba
+  `ImportError`, y una instalación inconsistente —mezclar el paquete del
+  sistema con otra versión de Python— lanza un pánico de pyo3 que hereda de
+  `BaseException` y atraviesa cualquier `except Exception`. Moría el primer
+  comando que el README manda ejecutar. Ahora degrada al cifrado de respaldo,
+  que es lo que significa "opcional".
+- **`fib doctor` devolvía 1 siempre, para todo el mundo.** Sumaba al código de
+  salida cada capacidad sin modelo, y `transcribe` no está cubierta por
+  *ningún* perfil: en una instalación perfectamente sana el código era 1. Así
+  no distinguía nada, y `fib doctor && fib "..."` nunca continuaba. Ahora solo
+  falla lo que es un fallo: que no responda ningún proveedor.
+- **`fib api add --readonly` listaba las herramientas que NO adjuntó.** Decía
+  "1 herramientas" y a renglón seguido enseñaba las tres, `DELETE` incluido:
+  la cuenta era correcta y la lista mentía. En un producto cuyo argumento es
+  que sabes qué puede hacer el agente, ese es de los peores sitios donde
+  mentir.
+- **`fib scope add /etc/** libre` respondía "✓".** El bloqueo de núcleo seguía
+  ganando —la garantía nunca estuvo rota— pero la salida daba a entender lo
+  contrario, y quien la creyera se quedaría pensando que acaba de abrir
+  `/etc`. Ahora avisa de que sigue bloqueado y por qué.
+- **`fib sync import` con la contraseña mal escribía una traza de excepción.**
+  Teclearla mal es el camino habitual, no el raro.
+
 - **`fib` moría con un mensaje directo de más de dos palabras.** El positional
   `message` y los subparsers competían por los mismos tokens y argparse los
   repartía: `fib arregla mis descargas` le daba dos palabras a `message` y

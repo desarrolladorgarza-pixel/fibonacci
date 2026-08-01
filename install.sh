@@ -23,8 +23,25 @@ if [ -z "$PY" ]; then
 fi
 echo "  ✓ $PY"
 
-"$PY" -m pip install --user --upgrade fibonacci-agent 2>/dev/null \
-  || "$PY" -m pip install --user --upgrade --break-system-packages fibonacci-agent
+# Fibonacci todavía no está en PyPI. Mientras tanto se instala desde el repo,
+# que funciona igual de bien; en cuanto exista el paquete, la primera rama
+# gana sola y esto no hay que tocarlo.
+REPO="git+https://github.com/desarrolladorgarza-pixel/fibonacci@main"
+
+instalar() {   # $1: destino (fibonacci-agent | git+...)
+  "$PY" -m pip install --user --upgrade "$1" 2>/dev/null \
+    || "$PY" -m pip install --user --upgrade --break-system-packages "$1"
+}
+
+if instalar fibonacci-agent; then
+  echo "  ✓ instalado desde PyPI"
+elif command -v git >/dev/null 2>&1 && instalar "$REPO"; then
+  echo "  ✓ instalado desde GitHub (aún no publicado en PyPI)"
+else
+  echo "  ✗ No pude instalar Fibonacci."
+  echo "    Necesitas git, o espera a que el paquete esté en PyPI."
+  exit 1
+fi
 
 BIN="$("$PY" -c 'import site,os;print(os.path.join(site.USER_BASE,"bin"))')"
 case ":$PATH:" in

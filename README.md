@@ -48,11 +48,14 @@
 Autor: **Chronoshg** · [desarrolladorgarza-pixel](https://github.com/desarrolladorgarza-pixel) · MIT · v0.7.0 · Linux · macOS · Windows · Android · BSD
 
 ```bash
-pip install fibonacci-agent
+pip install git+https://github.com/desarrolladorgarza-pixel/fibonacci
 fib doctor
 fib "ordena mi carpeta de descargas por tipo de archivo"
 fib undo          # si no te gustó
 ```
+
+> Todavía no está publicado en PyPI, así que `pip install fibonacci-agent` aún
+> no funciona. Se instala desde el repo mientras tanto.
 
 ---
 
@@ -417,8 +420,13 @@ lo que la herramienta hizo.
 ## Instalación
 
 ```bash
-pip install fibonacci-agent            # cualquier plataforma
+pip install git+https://github.com/desarrolladorgarza-pixel/fibonacci
 ```
+
+**Sobre PyPI:** el nombre `fibonacci-agent` aún no está publicado, así que
+`pip install fibonacci-agent` falla hoy. Los instaladores de abajo lo intentan
+primero y caen al repo si no está, para que funcionen antes y después de la
+publicación.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/desarrolladorgarza-pixel/fibonacci/main/install.sh | bash

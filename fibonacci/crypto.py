@@ -45,10 +45,30 @@ FORMAT_FALLBACK = "fib-hmac-ctr-2"
 
 
 def aes_available() -> bool:
+    """
+    ¿Hay AES-256-GCM utilizable?
+
+    No basta con capturar `ImportError`. `cryptography` trae bindings en Rust,
+    y una instalación rota —lo típico al mezclar el paquete del sistema con
+    otra versión de Python— no falla con `ImportError` sino con un pánico de
+    pyo3, que hereda de `BaseException` y por tanto atraviesa cualquier
+    `except Exception`. El resultado era que `fib doctor` moría con una traza
+    de Rust en la cara del usuario, y `doctor` es literalmente el primer
+    comando que el README manda ejecutar.
+
+    Es una dependencia **opcional**: que esté rota debe degradar al cifrado de
+    respaldo, exactamente igual que si no estuviera.
+    """
     try:
         from cryptography.hazmat.primitives.ciphers.aead import AESGCM  # noqa: F401
         return True
     except ImportError:
+        return False
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except BaseException as exc:  # noqa: BLE001
+        log.warning("'cryptography' está instalado pero no se puede usar (%s: %s). "
+                    "Se usará el cifrado de respaldo.", type(exc).__name__, exc)
         return False
 
 
@@ -82,7 +102,7 @@ def encrypt(plaintext: str, passphrase: str, *,
             "data": base64.b64encode(blob).decode(),
         })
 
-    log.warning("cryptography no está instalado: usando cifrado de respaldo. "
+    log.warning("cryptography no está disponible: usando cifrado de respaldo. "
                 "Instala fibonacci-agent[crypto] para AES-256-GCM.")
     cipher = _xor_stream(data, key)
     mac = hmac.new(key, cipher, hashlib.sha256).digest()

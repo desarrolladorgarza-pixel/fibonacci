@@ -365,14 +365,17 @@ def cmd_doctor(args) -> int:
     print()
     from .contracts import Capability
 
-    gaps = 0
     for cap in Capability:
         cands = agent.mesh.catalog.find(cap, local_only=(cfg["mode"] == "local"))
         if cands:
             print(f"  {cap.value:14s} → {cands[0].id}")
         else:
+            # Informativo, no un fallo: hay capacidades que ningún perfil cubre
+            # (`transcribe` no tiene modelo en ningún catálogo). Cuando esto
+            # sumaba al código de salida, `fib doctor` devolvía 1 SIEMPRE, para
+            # todo el mundo y en una instalación perfectamente sana, así que el
+            # código no distinguía nada y `fib doctor && fib ...` no funcionaba.
             print(c(f"  {cap.value:14s} → sin cobertura", "33"))
-            gaps += 1
 
     print()
     for k, v in agent.memory.stats().items():
@@ -408,12 +411,14 @@ def cmd_doctor(args) -> int:
     apis = len([x for x in agent.tools.specs() if x.name.startswith("api.")])
     print(c(f"  primitivas de flujo: {flujo} · herramientas de API: {apis}", "90"))
 
+    # Solo hay un fallo de verdad: que no haya con qué pensar. Todo lo demás
+    # es informe, y el informe ya está impreso arriba.
     if not any(alive.values()):
         print(c("\n  ⚠ Ningún proveedor responde.", "33"))
         print(c("    Local:  ollama serve  &&  ollama pull qwen3:8b", "90"))
         print(c("    Nube:   export ANTHROPIC_API_KEY=...  (o OPENROUTER_API_KEY)", "90"))
         return 1
-    return 1 if gaps else 0
+    return 0
 
 
 def cmd_config(args) -> int:
@@ -470,10 +475,25 @@ def cmd_scope(args) -> int:
         print(c("  confirma = requiere tu sí explícito", "90"))
         print(c("  bloquea  = no, y no hay confirmación que lo cambie", "90"))
     elif args.action == "add":
+        from .identity import CORE_DENY
+
         d = {"libre": Decision.ALLOW, "confirma": Decision.CONFIRM,
              "bloquea": Decision.DENY}[args.decision]
+
+        # Los bloqueos de núcleo se anteponen SIEMPRE, así que pedir "libre"
+        # sobre uno de ellos no concede nada. El comportamiento era correcto;
+        # lo que engañaba era la salida: decía "✓ /etc/** → libre" y el
+        # usuario se quedaba creyendo que acababa de abrir /etc.
+        choca = next((s for s in CORE_DENY if s.pattern == args.pattern), None)
         a.add_scope(args.pattern, d, Trust.MEMBER, args.note or "")
-        print(c(f"  ✓ {args.pattern} → {args.decision}", "32"))
+
+        if choca is not None and d is not Decision.DENY:
+            print(c(f"  ! {args.pattern} sigue BLOQUEADO", "33"))
+            print(c("    Es un bloqueo de núcleo: se antepone a cualquier "
+                    "ámbito que añadas, y no hay forma de abrirlo desde el "
+                    "CLI. Por eso está ahí.", "90"))
+        else:
+            print(c(f"  ✓ {args.pattern} → {args.decision}", "32"))
     return 0
 
 
@@ -590,22 +610,34 @@ def cmd_sync(args) -> int:
     sync = Sync(agent.memory, agent.journal, __import__(
         "fibonacci.tasks", fromlist=["TaskStore"]).TaskStore())
 
-    if args.action == "export":
-        stats = sync.export(args.path, passphrase=args.password)
-        print(c(f"  ✓ exportado a {args.path}", "32"))
-        for k, v in stats.items():
-            print(c(f"    {k}: {v}", "90"))
-    elif args.action == "import":
-        r = sync.import_bundle(args.path, passphrase=args.password)
-        print(c("  ✓ importado", "32"))
-        for k, v in r.items():
-            print(c(f"    {k}: {v}", "90"))
-    elif args.action == "folder":
-        r = sync.sync_folder(args.path, passphrase=args.password)
-        print(c(f"  ✓ sincronizado con {r['dispositivos']} dispositivo(s)", "32"))
-        for k, v in r.items():
-            if k != "dispositivos":
+    # Equivocarse de contraseña o de archivo es el camino habitual, no el raro:
+    # merece un mensaje, no una traza de excepción en la cara del usuario.
+    try:
+        if args.action == "export":
+            stats = sync.export(args.path, passphrase=args.password)
+            print(c(f"  ✓ exportado a {args.path}", "32"))
+            for k, v in stats.items():
                 print(c(f"    {k}: {v}", "90"))
+        elif args.action == "import":
+            r = sync.import_bundle(args.path, passphrase=args.password)
+            print(c("  ✓ importado", "32"))
+            for k, v in r.items():
+                print(c(f"    {k}: {v}", "90"))
+            if r.get("acciones_nuevas"):
+                # Las acciones de otro equipo entran como auditoría, no como
+                # algo deshacible desde aquí: sus snapshots viven allá. Sin
+                # esta línea el usuario las busca en `fib history` y no están.
+                print(c("    (las acciones remotas quedan en la bitácora: "
+                        "`fib history --trace`, no en `fib history`)", "90"))
+        elif args.action == "folder":
+            r = sync.sync_folder(args.path, passphrase=args.password)
+            print(c(f"  ✓ sincronizado con {r['dispositivos']} dispositivo(s)", "32"))
+            for k, v in r.items():
+                if k != "dispositivos":
+                    print(c(f"    {k}: {v}", "90"))
+    except (ValueError, OSError) as exc:
+        print(c(f"  ✗ {exc}", "31"))
+        return 1
     return 0
 
 
@@ -818,12 +850,21 @@ def cmd_api(args) -> int:
         n = attach_openapi(agent.tools, spec, agent.api,
                            prefix=args.prefix, credential=args.credential,
                            include_mutating=not args.readonly)
+        # La lista se filtra igual que el registro. Antes no: con --readonly
+        # decía "1 herramientas" y a renglón seguido listaba las tres, DELETE
+        # incluido. En un producto cuyo argumento es que sabes qué puede hacer
+        # el agente, enseñar una herramienta que no existe es de lo peor que
+        # puede hacer la salida.
+        adjuntadas = spec.to_tool_specs(prefix=args.prefix,
+                                        include_mutating=not args.readonly)
         print(c(f"  ✓ '{spec.title}': {n} herramientas", "32"))
         print(c(f"    base: {spec.base_url}", "90"))
-        for s_, _ in spec.to_tool_specs(prefix=args.prefix)[:8]:
+        for s_, _ in adjuntadas[:8]:
             print(c(f"    {s_.name}", "90"))
         if n > 8:
             print(c(f"    ... y {n - 8} más", "90"))
+        if args.readonly:
+            print(c("    (solo lectura: las que mutan quedaron fuera)", "90"))
 
         # Persistir para que se cargue en cada arranque
         import json as _j

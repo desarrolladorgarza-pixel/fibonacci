@@ -122,6 +122,21 @@ def test_scope_no_puede_anular_un_bloqueo_del_nucleo(cli):
     assert decision is Decision.DENY
 
 
+def test_scope_add_sobre_un_bloqueo_de_nucleo_lo_advierte(cli, capsys):
+    """El comportamiento ya era correcto; la salida engañaba. Decía
+    '✓ /etc/** → libre' y el usuario se quedaba creyendo que había abierto
+    /etc, cuando el bloqueo de núcleo seguía ganando."""
+    assert cli.main(["scope", "add", "/etc/**", "libre"]) == 0
+    salida = _salida(capsys)
+    assert "BLOQUEADO" in salida
+    assert "✓ /etc/** → libre" not in salida
+
+
+def test_scope_add_normal_sigue_confirmando(cli, capsys):
+    assert cli.main(["scope", "add", "~/proyectos/mio/**", "libre"]) == 0
+    assert "✓" in _salida(capsys)
+
+
 # ===========================================================================
 # pair
 # ===========================================================================
@@ -608,6 +623,38 @@ def test_api_add_registra_la_spec_para_los_proximos_arranques(cli, capsys,
     assert "solo lectura" in _salida(capsys)
 
 
+def test_api_add_readonly_no_lista_las_que_mutan(cli, capsys, tmp_path):
+    """La lista debe coincidir con lo que de verdad se adjuntó.
+
+    Decía "1 herramientas" y a renglón seguido listaba las tres, `DELETE`
+    incluido: la cuenta era correcta y la lista mentía.
+    """
+    spec = tmp_path / "crm.json"
+    spec.write_text(json.dumps({
+        "openapi": "3.0.0",
+        "info": {"title": "CRM", "version": "1"},
+        "servers": [{"url": "http://127.0.0.1:1/v1"}],
+        "paths": {
+            "/clientes": {
+                "get": {"operationId": "listaClientes", "summary": "lista"},
+                "post": {"operationId": "creaCliente", "summary": "crea"}},
+            "/clientes/{id}": {
+                "delete": {"operationId": "borraCliente", "summary": "borra"}}},
+    }), encoding="utf-8")
+
+    assert cli.main(["api", "add", str(spec), "--prefix", "crm",
+                     "--readonly"]) == 0
+    salida = _salida(capsys)
+    assert "listaClientes" in salida
+    assert "creaCliente" not in salida, "un POST no entra en modo solo lectura"
+    assert "borraCliente" not in salida, "un DELETE tampoco"
+
+    # Sin --readonly sí deben aparecer las tres.
+    assert cli.main(["api", "add", str(spec), "--prefix", "crm2"]) == 0
+    completa = _salida(capsys)
+    assert "creaCliente" in completa and "borraCliente" in completa
+
+
 # ===========================================================================
 # sync
 # ===========================================================================
@@ -624,6 +671,23 @@ def test_sync_export_e_import_van_y_vuelven(cli, capsys, tmp_path):
 
     assert cli.main(["sync", "import", str(bulto), "-p", "clave"]) == 0
     assert "importado" in _salida(capsys)
+
+
+def test_sync_import_con_contrasena_incorrecta_no_lanza(cli, capsys, tmp_path):
+    """Teclear mal la contraseña es el camino habitual, no el raro: debe salir
+    un mensaje, no una traza de excepción."""
+    bulto = tmp_path / "respaldo.fib"
+    assert cli.main(["sync", "export", str(bulto), "-p", "la-buena"]) == 0
+    capsys.readouterr()
+
+    assert cli.main(["sync", "import", str(bulto), "-p", "la-mala"]) == 1
+    assert "✗" in _salida(capsys) or "contraseña" in _salida(capsys)
+
+
+def test_sync_import_de_un_archivo_que_no_existe_no_lanza(cli, capsys, tmp_path):
+    assert cli.main(["sync", "import", str(tmp_path / "fantasma.fib"),
+                     "-p", "x"]) == 1
+    assert "✗" in _salida(capsys)
 
 
 def test_sync_folder_reporta_los_dispositivos(cli, capsys, tmp_path):
@@ -652,6 +716,55 @@ def test_doctor_reporta_sin_lanzar(cli, capsys):
     assert "Fibonacci" in salida
     assert "plataforma" in salida
     assert codigo in (0, 1)
+
+
+def test_doctor_con_un_proveedor_vivo_sale_con_0(cli, capsys, monkeypatch):
+    """
+    Una capacidad sin modelo es informe, no fallo.
+
+    `transcribe` no está cubierta por NINGÚN perfil, así que cuando los huecos
+    sumaban al código de salida `fib doctor` devolvía 1 para todo el mundo,
+    siempre, incluso en una instalación sana. El código no distinguía nada y
+    `fib doctor && fib "..."` —tal cual aparece en el README— nunca seguía.
+    """
+    from fibonacci.mesh.router import ModelMesh
+
+    monkeypatch.setattr(ModelMesh, "diagnose", lambda self: {"ollama": True})
+    assert cli.main(["doctor"]) == 0
+    assert "sin cobertura" in _salida(capsys), "el hueco se sigue reportando"
+
+
+def test_doctor_sobrevive_a_una_cryptography_rota(cli, capsys, monkeypatch):
+    """
+    `cryptography` es opcional, y una instalación rota —mezclar el paquete del
+    sistema con otra versión de Python— no lanza `ImportError` sino un pánico
+    de pyo3, que hereda de `BaseException` y atraviesa `except Exception`.
+
+    Se descubrió instalando el producto de verdad: `fib doctor`, el primer
+    comando que el README manda ejecutar, moría con una traza de Rust.
+    """
+    import builtins
+
+    from fibonacci import crypto
+
+    class PanicoDeRust(BaseException):
+        pass
+
+    real = builtins.__import__
+
+    def falso(nombre, *a, **k):
+        if nombre.startswith("cryptography"):
+            raise PanicoDeRust("Python API call failed")
+        return real(nombre, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", falso)
+
+    assert crypto.aes_available() is False, "debe degradar, no propagar"
+    blob = crypto.encrypt("secreto", "clave")
+    assert crypto.decrypt(blob, "clave") == "secreto", "el respaldo sigue sirviendo"
+
+    assert cli.main(["doctor"]) in (0, 1)
+    assert "Fibonacci" in _salida(capsys)
 
 
 def test_doctor_dice_que_nadie_responde_cuando_nadie_responde(cli, capsys,

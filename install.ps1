@@ -16,7 +16,18 @@ if (-not $py) {
 }
 Write-Host "  + $py" -ForegroundColor Green
 
+# Fibonacci todavía no está en PyPI. Mientras tanto se instala desde el repo;
+# cuando el paquete exista, la primera rama gana sola.
+$repo = "git+https://github.com/desarrolladorgarza-pixel/fibonacci@main"
 & $py -m pip install --user --upgrade fibonacci-agent
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "  . no está en PyPI todavía, instalando desde GitHub" -ForegroundColor Yellow
+  & $py -m pip install --user --upgrade $repo
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "  x No pude instalar Fibonacci. Necesitas git instalado." -ForegroundColor Red
+    exit 1
+  }
+}
 
 $scripts = & $py -c "import site,os;print(os.path.join(site.USER_BASE,'Scripts'))"
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
