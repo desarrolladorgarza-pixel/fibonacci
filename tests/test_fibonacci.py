@@ -16,7 +16,7 @@ from fibonacci.agent import ContextBudget, _approx_tokens
 from fibonacci.contracts import (
     ActionStatus, Capability, DurableTask, Note, Skill, Step, TaskState, Turn,
 )
-from fibonacci.platform import config_dir, data_dir, detect
+from fibonacci.platform import detect
 
 
 # ---------------------------------------------------------------------------
@@ -215,10 +215,22 @@ def test_skill_activa_que_empeora_tambien_se_retira(tmp_path):
 # 4. PORTABILIDAD Y CONTEXTO
 # ---------------------------------------------------------------------------
 
-def test_plataforma_se_detecta_y_da_rutas():
+def test_plataforma_se_detecta_y_da_rutas(isolate):
+    """
+    Las rutas se piden al módulo, no a los símbolos importados arriba.
+
+    `isolate` parchea `fibonacci.platform`, pero un `from ... import data_dir`
+    copia la referencia y se le escapa. Esta prueba llamaba a las funciones de
+    verdad, y como crean el directorio si no existe, **ensuciaba el home real
+    de quien corriera pytest**. Se descubrió en el job de CI sin red, que corre
+    como un usuario sin permiso de escritura ahí.
+    """
+    import fibonacci.platform as plat
+
     p = detect()
     assert p.os in ("linux", "macos", "windows", "android", "bsd")
-    assert data_dir().exists() and config_dir().exists()
+    assert plat.data_dir().exists() and plat.config_dir().exists()
+    assert plat.data_dir() == isolate["data"], "debe apuntar al tmp de la prueba"
 
 
 def test_presupuesto_reserva_espacio_para_la_respuesta():

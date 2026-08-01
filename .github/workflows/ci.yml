@@ -77,4 +77,7 @@ jobs:
             echo "El bloqueo de red no se aplicó: la prueba no valdría nada."
             exit 1
           fi
-          sudo -u sinred "$PY" -m pytest tests/ -q -p no:cacheprovider
+          # -H para que el usuario sandbox use SU home: si hereda el del
+          # runner, cualquier prueba que se escape del aislamiento intenta
+          # escribir ahí. (Eso destapó justamente una que se escapaba.)
+          sudo -H -u sinred "$PY" -m pytest tests/ -q -p no:cacheprovider

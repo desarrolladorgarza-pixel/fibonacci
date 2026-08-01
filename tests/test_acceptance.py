@@ -362,12 +362,19 @@ def test_promesa_cifrado_degrada_declarandolo():
     assert decrypt(blob, "k") == "x"
 
 
-def test_promesa_la_plataforma_se_detecta():
-    from fibonacci.platform import config_dir, data_dir, detect
+def test_promesa_la_plataforma_se_detecta(isolate):
+    """README: 'rutas según la convención de cada SO'.
 
-    p = detect()
+    Se consulta el módulo, no símbolos importados: `from ... import data_dir`
+    copia la referencia y esquiva el aislamiento, y como estas funciones crean
+    el directorio, la prueba escribía en el home real.
+    """
+    import fibonacci.platform as plat
+
+    p = plat.detect()
     assert p.os in ("linux", "macos", "windows", "android", "bsd")
-    assert data_dir().exists() and config_dir().exists()
+    assert plat.data_dir().exists() and plat.config_dir().exists()
+    assert plat.config_dir() == isolate["config"]
 
 
 # ===========================================================================

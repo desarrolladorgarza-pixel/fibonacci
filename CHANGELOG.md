@@ -33,6 +33,14 @@ pasar la compuerta. Es la quinta vez que ocurre en este proyecto; ver
   muta**, una para el texto y otra para el color: el borrado ocurría en la
   primera llamada y la segunda devolvía `False`, así que el éxito se pintaba
   siempre con el color del fallo.
+- **Dos pruebas escribían en el home real del usuario.**
+  `test_plataforma_se_detecta_y_da_rutas` y su gemela de aceptación llamaban a
+  `data_dir()` y `config_dir()` importadas como símbolo: `isolate` parchea el
+  módulo, pero un `from ... import` copia la referencia y la esquiva. Como esas
+  funciones crean el directorio si falta, correr `pytest` dejaba
+  `~/.config/fibonacci` y `~/.local/share/fibonacci` en la máquina de
+  cualquiera — justo lo que `CODEX.md` §6 pone como criterio de aceptación. Lo
+  destapó el job de CI sin red, que corre como un usuario sin permiso ahí.
 - **El aislamiento del CLI en las pruebas era una casualidad.** `cli.CONFIG`
   se resolvía al importar el módulo, y solo apuntaba al directorio temporal
   porque el primer import ocurría dentro de una prueba; cualquier import a
