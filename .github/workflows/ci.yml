@@ -9,6 +9,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.11", "3.12", "3.13"]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -43,6 +44,8 @@ jobs:
   sin-red:
     # Verifica la promesa: ninguna prueba debe salir a internet.
     runs-on: ubuntu-latest
+    # Si algo se cuelga, que falle en 20 minutos y no consuma el tope de 6h.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -50,7 +53,23 @@ jobs:
       - run: pip install -e ".[dev,crypto]"
       - name: Bloquear salida externa y correr pruebas
         run: |
-          sudo iptables -A OUTPUT -o lo -j ACCEPT
-          sudo iptables -A OUTPUT -d 127.0.0.0/8 -j ACCEPT
-          sudo iptables -A OUTPUT -j REJECT
-          pytest tests/ -q
+          # El bloqueo se aplica SOLO al usuario que corre las pruebas.
+          #
+          # La versión anterior hacía `iptables -A OUTPUT -j REJECT` a secas y
+          # el job se colgaba para siempre: esa regla también cortaba al agente
+          # del runner, que necesita hablar con GitHub para reportar el
+          # resultado. El job nunca terminaba —ni en verde ni en rojo— así que
+          # la promesa que decía verificar no se verificaba desde el principio.
+          sudo useradd -m sinred
+          sudo chmod -R a+rX "$GITHUB_WORKSPACE"
+          PY=$(which python)
+          sudo iptables -A OUTPUT -m owner --uid-owner sinred -o lo -j ACCEPT
+          sudo iptables -A OUTPUT -m owner --uid-owner sinred -d 127.0.0.0/8 -j ACCEPT
+          sudo iptables -A OUTPUT -m owner --uid-owner sinred -j REJECT
+          # Comprobación de que el bloqueo existe de verdad: si esto llega a
+          # internet, la regla no está puesta y el job no prueba nada.
+          if sudo -u sinred curl -s --max-time 8 https://pypi.org >/dev/null; then
+            echo "El bloqueo de red no se aplicó: la prueba no valdría nada."
+            exit 1
+          fi
+          sudo -u sinred "$PY" -m pytest tests/ -q -p no:cacheprovider

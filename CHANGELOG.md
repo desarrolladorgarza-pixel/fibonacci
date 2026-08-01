@@ -47,6 +47,15 @@ pasar la compuerta. Es la quinta vez que ocurre en este proyecto; ver
   un `UnicodeEncodeError` al guardar. `tools.py` y la bóveda ya lo hacían
   bien; ahora lo hace todo. Lo destapó el CI: las tres versiones de Python
   sobre `windows-latest` fallaban.
+- **El job de CI que comprueba que ninguna prueba usa la red no comprobaba
+  nada: se colgaba.** Hacía `iptables -A OUTPUT -j REJECT` a secas, lo que
+  también cortaba al agente del runner, que necesita hablar con GitHub para
+  reportar. El job se quedaba `in_progress` hasta el tope de seis horas, ni en
+  verde ni en rojo, así que la promesa que decía verificar nunca se verificó.
+  Ahora el bloqueo se aplica solo al usuario que corre las pruebas
+  (`--uid-owner`), el job comprueba primero que el bloqueo existe de verdad
+  —si logra salir a internet, falla en vez de dar un verde vacío— y todos los
+  jobs tienen `timeout-minutes`.
 - **La compuerta de estilo no daba la misma respuesta dos veces.** El
   conjunto de reglas quedaba al criterio de la versión de ruff instalada:
   `preflight.sh` decía "ruff limpio" en local mientras el CI, que instala
