@@ -77,11 +77,10 @@ anótalo en el CHANGELOG.** No ajustes la aserción a lo que hace el código.
 
 ### Antes: el repo debe existir o poder crearse
 
-`publish.sh` intenta crearlo con `gh repo create`. Si estás corriendo bajo una
-**GitHub App** (como la integración de Claude o de Codex), lo más probable es
-que **no tenga permiso para crear repositorios**: esas apps suelen traer acceso
-a código, issues, PRs y workflows, pero no `Administration`, que es el que hace
-falta.
+`publish.sh` intenta crearlo. Si estás corriendo bajo una **GitHub App** (como
+la integración de Claude o de Codex), lo más probable es que **no tenga permiso
+para crear repositorios**: esas apps suelen traer acceso a código, issues, PRs
+y workflows, pero no `Administration`, que es el que hace falta.
 
 Si es el caso, el script te lo dice y se detiene. La salida es crear el repo
 vacío a mano en https://github.com/new —público, sin README ni .gitignore ni
@@ -98,8 +97,15 @@ bash scripts/publish.sh
 ```
 
 El script corre `preflight` primero y **aborta si falla**. Luego: inicializa
-git, crea el repo público con `gh`, sube, pone topics, activa issues y
-discussions, etiqueta y crea el release con las notas del CHANGELOG.
+git, crea el repo público, sube, pone topics, activa issues y discussions,
+etiqueta, crea el release con las notas del CHANGELOG y protege `main`.
+
+Habla con GitHub por `gh` si está instalado y autenticado, y si no por la API
+REST con `GITHUB_TOKEN` — porque `gh` falta justo donde más se necesita: en un
+runner de CI, en un contenedor o bajo un agente. Si al token le falta algún
+permiso, cada paso bloqueado se reporta con el permiso que le falta y el resto
+continúa: media publicación con un aviso claro es más útil que ninguna con un
+403 sin explicar.
 
 Para PyPI (opcional, requiere credenciales configuradas):
 
@@ -112,8 +118,9 @@ bash scripts/publish.sh --pypi
 - [ ] Verifica que la pestaña **Actions** esté en verde (CI corre en 3 SO × 3
       versiones de Python, más un job que bloquea la salida a internet con
       iptables para comprobar que ninguna prueba depende de red).
-- [ ] Activa **branch protection** en `main`: exigir que el CI pase antes de
-      merge.
+- [x] **Branch protection** en `main` — ya la pone `publish.sh`: exige CI en
+      verde y prohíbe force-push. Si tu token no tiene `Administration`, el
+      script lo dice y hay que activarla a mano en Settings > Branches.
 - [ ] Lee el README completo como si no conocieras el proyecto. Si algo suena a
       promesa que el código no cumple, corrígelo. Es más importante que
       cualquier feature.

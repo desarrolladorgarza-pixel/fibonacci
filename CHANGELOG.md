@@ -199,6 +199,17 @@ un modelo de verdad. Ninguno de esos era visible desde la suite.
   los `awesome-*`, con lo que **no** hay que hacer.
 
 ### Cambiado
+- **`publish.sh` ya no necesita `gh`.** Usa `gh` si está autenticado y si no la
+  API REST con `GITHUB_TOKEN`. `gh` no viene en un runner de CI, ni en un
+  contenedor, ni bajo un agente — es exactamente donde más falta hace, y el
+  script se rendía ahí con un "instálalo y hazlo a mano" después de haber
+  pasado la compuerta entera. Además: si al token le falta un permiso, cada
+  paso bloqueado se reporta con el permiso que le falta y el resto continúa;
+  la protección de `main` deja de ser un paso manual de `RELEASE.md` §4; el
+  tag cae a la API si `git push` de etiquetas está bloqueado; `--pypi` corre
+  `twine check` antes de subir, porque una versión publicada en PyPI no se
+  puede reemplazar; y el `--dry-run` ya no reparte ✓ por operaciones que no
+  ejecutó.
 - **La suite tarda la mitad.** 425 pruebas en 52 s, frente a 279 en 59 s. Los
   servidores de prueba se apagaban con el `poll_interval` por omisión de
   `serve_forever`, medio segundo que se pagaba en cada prueba que levantara

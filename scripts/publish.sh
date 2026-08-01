@@ -192,7 +192,9 @@ print(json.dumps((m.group(1).strip() if m else "Ver CHANGELOG.md")[:60000]))
 PY
 )
 ejecutar "git tag -a 'v$VERSION' -m 'Fibonacci v$VERSION' 2>/dev/null || true"
-if ! ejecutar "git push origin 'refs/tags/v$VERSION'"; then
+# El error de git se silencia porque el fallo lo gestionamos abajo: dejarlo
+# escupir su 403 crudo solo asusta a quien lee la salida.
+if ! ejecutar "git push origin 'refs/tags/v$VERSION' >/dev/null 2>&1"; then
   # Algunos proxys y apps permiten empujar ramas pero no etiquetas; la API
   # es otra puerta al mismo sitio.
   SHA=$(git rev-parse HEAD)
